@@ -1,4 +1,4 @@
-goodbye
+
 library(data.table)
 library(openxlsx)
 library("readxl")
@@ -11,7 +11,7 @@ library(hrbrthemes)
 library(dplyr)
 library(patchwork) 
 library(tidyr)
-setwd("C:/Users/Fride/OneDrive/Рабочий стол/Coursework/Data_coursework")
+setwd("C:/Coursework/Data_coursework")
 Sys.setenv(LANG = "en")
 
 #read the table
