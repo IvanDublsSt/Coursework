@@ -10,7 +10,7 @@ library(hrbrthemes)
 library(dplyr)
 library(patchwork) 
 library(tidyr)
-setwd("C:/Users/Fride/OneDrive/Рабочий стол/Coursework/Data_coursework")
+setwd("C:/Coursework/Data_coursework")
 Sys.setenv(LANG = "en")
 #####Big table ####
 #download the table. 
@@ -219,8 +219,9 @@ mapply(linear_inter_big, to_maturity = m, date = s)
 localtable2 <- BigRawTableBonds[, c("Date_trading", "Days_to_maturity", "ISIN")]
 
 localtable2[, "RF_interpolated" := mapply(linear_inter_big, to_maturity = Days_to_maturity, date = Date_trading)/100]
-BigRawTableBonds[, "RF_interpolated" := localtable2$RF_interpolated]
 saveRDS(localtable2, "TableRFInterpolationCheck.rds")
+localtable2 <- readRDS("TableRFInterpolationCheck.rds")
+BigRawTableBonds[, "RF_interpolated" := localtable2$RF_interpolated]
 #add G-spread interpolated
 BigRawTableBonds[, "G_spread_interpolated" := YTM_ind_main - RF_interpolated]
 
