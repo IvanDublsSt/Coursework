@@ -12,7 +12,7 @@ library(patchwork)
 library(tidyr)
 setwd("C:/Users/Fride/OneDrive/Рабочий стол/Coursework/Data_coursework")
 Sys.setenv(LANG = "en")
-7#####Big table ####
+#####Big table ####
 #download the table. 
 BigRawTableBonds <- fread("Big_raw_table_bonds.csv", encoding = "UTF-8")
 #change names to latin short versions 
