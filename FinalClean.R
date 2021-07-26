@@ -25,6 +25,15 @@ mapmonth <- function(month, months){
   #print(length(years[years <= year]))
   return(monthsreal[length(months[months <= month])])
 }
+
+#возвращает случайно отнормированные регистрационные номера обратно в исходный вид
+mapregn <- function(month, months){
+  months <- unique(months)
+  monthsreal <- c(1:5000)
+  #print(years <= year)
+  #print(length(years[years <= year]))
+  return(monthsreal[length(months[months <= month])])
+}
 #нормирует один вектор
 znorm_vector <- function(vector){
   vecmean <- mean(vector, na.rm = T)
@@ -52,22 +61,26 @@ gm_mean = function(x, na.rm=TRUE){
 CleanData <- function(Table, Variable, Average = F, State = F){
   
   Table <- Table[State_bank == State*1]
-  Table[, c("LaggedYTM","LaggedYTM2", "LaggedYTM3") := .(shift(get(Variable), 1L, fill = NA, type = "lag"),
-                                                         shift(get(Variable), 2L, fill = NA, type = "lag"),
-                                                         shift(get(Variable), 3L, fill = NA, type = "lag"))]
+  # Table[, c("LaggedYTM","LaggedYTM2", "LaggedYTM3") := .(shift(get(Variable), 1L, fill = NA, type = "lag"),
+  #                                                        shift(get(Variable), 2L, fill = NA, type = "lag"),
+  #                                                        shift(get(Variable), 3L, fill = NA, type = "lag"))]
   Table[, "Indicative_yield_type" := as.factor(Indicative_yield_type)]
   Table[, "Currency" := as.factor(Currency)]
   Table[, "Exch_name" := as.factor(Exch_name)]
   Table[is.na(Coupon), "Coupon" := 0]
   Table[is.na(Days_to_call), "Days_to_call" := 0]
   Table[is.na(Moscow), "Moscow" := 0]
-  Table[is.na(LaggedYTM), "LaggedYTM" := mean(LaggedYTM, na.rm = T), by = c("ISIN", "Month", "Year")]
-  Table[is.na(LaggedYTM2), "LaggedYTM2" := mean(LaggedYTM2, na.rm = T), by = c("ISIN", "Month", "Year")]
-  Table[is.na(LaggedYTM3), "LaggedYTM3" := mean(LaggedYTM3, na.rm = T), by = c("ISIN", "Month", "Year")]
+  # Table[is.na(LaggedYTM), "LaggedYTM" := mean(LaggedYTM, na.rm = T), by = c("ISIN", "Month", "Year")]
+  # Table[is.na(LaggedYTM2), "LaggedYTM2" := mean(LaggedYTM2, na.rm = T), by = c("ISIN", "Month", "Year")]
+  # Table[is.na(LaggedYTM3), "LaggedYTM3" := mean(LaggedYTM3, na.rm = T), by = c("ISIN", "Month", "Year")]
   Table <- Table[!is.na(NAs_pnl)]
-  Table <- Table[!is.na(LaggedYTM)]
+  # Table <- Table[!is.na(LaggedYTM)]
   listofvars <- c("G_spread", "G_spread_interpolated","YTM_ind_main",  "Date_trading", "State_bank")
   listofvars <- listofvars[listofvars!=Variable]
+  Table[, "V1":= NULL]
+  Table[, "V1.x":= NULL]
+  Table[, "V1.y":= NULL]
+  Table[, "num":= NULL]
   Table[, (listofvars) := NULL]
   if (Average == F){
     ISINs <- Table$ISIN
@@ -178,15 +191,28 @@ MakePrediction <- function(Model, Table, Variable = "G_spread_interpolated", Ave
 
 #Загрузка и очистка данных
 smpl_dt <- fread("C:/Coursework/Data_coursework/Tables/Cb1_I_.csv")
+smpl_dt <- smpl_dt[!str_detect(ISIN, "XS") ]
+smpl_dt[,"LaggedYTM" := NULL]
+smpl_dt[,"ReturnEquityMonth" := NULL]
+smpl_dt[,"ReturnEquityDay" := NULL]
+#попробовать выкинуть значения к оферте !!!!
+
+
 smpl_dt_norm <- cbind(znorm_table(smpl_dt[, !c("G_spread", "G_spread_interpolated", "YTM_ind_main", "Moscow", "State_bank")]), smpl_dt[, c("G_spread", "G_spread_interpolated", "YTM_ind_main", "Moscow", "State_bank")])
 dt <- CleanData(smpl_dt_norm, "G_spread_interpolated", Average = T)$Table
 dt_isin <- CleanData(smpl_dt_norm, "G_spread_interpolated", Average = T)$ISIN
+#получаем ненормированные таблицы на всякий случай 
+dt_not_norm <- CleanData(smpl_dt, "G_spread_interpolated", Average = T)$Table
+dt_not_norm_isin <- CleanData(smpl_dt, "G_spread_interpolated", Average = T)$ISIN
+
 #Получение out-of-sample ошибок на оптимальной модели и очистка данных
-dt[, "Iteration" := sample(1:20, .N, replace = T)]
+dt[, "Index" := 1:.N]
+
+dt[, "Iteration" := sample(1:5, .N, replace = T)]
 
 modelsvm <- svm(get("G_spread_interpolated")~.-Iteration,data = dt[Iteration != 1], gamma = 0.0001, cost = 100, epsilon = 0.001)
 a <- MakePrediction(modelsvm, dt[Iteration == 1], ISINs = dt_isin[dt$Iteration==1])
-for (i in 2:20){
+for (i in 2:5){
   start <- Sys.time()
   modelsvm <- svm(get("G_spread_interpolated")~.-Iteration,data = dt[Iteration != i], gamma = 0.0001, cost = 100, epsilon = 0.001)
   anew <- MakePrediction(modelsvm, dt[Iteration == i], ISINs = dt_isin[dt$Iteration==i])
@@ -195,6 +221,51 @@ for (i in 2:20){
 }
 a[, "Year" := sapply(Year, mapyear, years = a$Year)]
 a[, "Month" := sapply(Month, mapmonth, months = a$Month)]
+#поправить порядки переменных
+a[, "Variable" := Variable*100]
+a[, "Errors" := Errors*100]
+a[, "Predictions" := Predictions*100]
+
+a[, mean(Errors)]
+a[, sd(Errors)]
+a[, MAE(Variable, Predictions)]
+linmod <- lm(G_spread_interpolated~.-Iteration, dt)
+summary(linmod)
+library(FNN)
+dt_for_knn <- copy(dt)
+dt_for_knn[, "Currency" := NULL]
+dt_for_knn[, "Exch_name" := NULL]
+dt_for_knn[, "Indicative_yield_type" := NULL]
+dt_for_knn[, "Index" := NULL]
+
+
+
+dt_for_knn_test <- dt_for_knn[Iteration == 10]
+dt_for_knn_train <- dt_for_knn[Iteration != 10]
+
+dt_for_knn_train <- dt_for_knn_train[, -"Iteration"]
+dt_for_knn_test <- dt_for_knn_test[, -"Iteration"]
+dt_for_knn_test_g <- dt_for_knn_test$G_spread_interpolated
+dt_for_knn_test <- dt_for_knn_test[, -"G_spread_interpolated"]
+dt_for_knn_train_g <- dt_for_knn_train$G_spread_interpolated
+dt_for_knn_train <- dt_for_knn_train[, -"G_spread_interpolated"]
+dt_for_knn_train
+
+
+knnmod <- knn.reg(train = dt_for_knn_train,test = dt_for_knn_test, y = dt_for_knn_train_g, k = 8 )
+MAE(as.numeric(dt_for_knn_test_g),knnmod$pred)
+typeof(knnmod$pred)
+#приклеить таблицу с ненормированными использованными переменными 
+dt_with_isin <- cbind(dt_not_norm, dt_not_norm_isin)
+dt_with_isin[, "ISIN" := dt_not_norm_isin]
+dt_with_isin[, "dt_not_norm_isin" := NULL]
+
+dt_with_isin[, "Year" := sapply(Year, mapyear, years = dt_with_isin$Year)]
+dt_with_isin[, "Month" := sapply(Month, mapmonth, months = dt_with_isin$Month)]
+
+a_added <- merge(a, dt_with_isin, by = c("ISIN", "Month", "Year"))
+
+#сохранить результат
 saveRDS(a, "ResidualsTableOutOfSampleCheck.rds")
 
 #получаем лучшую модель, обученную на всех данных по частным банкам
@@ -207,6 +278,7 @@ dt_state <- CleanData(smpl_dt_norm, "G_spread_interpolated", Average = T, State 
 dt_state_isin <- CleanData(smpl_dt_norm, "G_spread_interpolated", Average = T, State = T)$ISIN
 dt_state[, "ISIN" := dt_state_isin]
 ##несколько манипуляций с форматом данных, без которых не обучалась модель
+#проверить списки факторов !!!
 dt_state <- subset(dt_state, Currency %in% levels(dt$Currency))
 dt_state$Currency <- droplevels(dt_state$Currency)
 dt_state <- subset(dt_state,Exch_name %in% levels(dt$Exch_name))
