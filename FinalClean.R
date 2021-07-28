@@ -4,6 +4,8 @@ library(data.table)
 library(openxlsx)
 library(stringr)
 library(e1071)
+library(FNN)
+library(MLmetrics)
 
 setwd("C:/Coursework/Data_coursework")
 Sys.setenv(LANG = "en")
@@ -195,6 +197,7 @@ smpl_dt <- smpl_dt[!str_detect(ISIN, "XS") ]
 smpl_dt[,"LaggedYTM" := NULL]
 smpl_dt[,"ReturnEquityMonth" := NULL]
 smpl_dt[,"ReturnEquityDay" := NULL]
+#smpl_dt[Indicative_yield_type!="Put/Call"]
 #попробовать выкинуть значения к оферте !!!!
 
 
@@ -229,9 +232,132 @@ a[, "Predictions" := Predictions*100]
 a[, mean(Errors)]
 a[, sd(Errors)]
 a[, MAE(Variable, Predictions)]
-linmod <- lm(G_spread_interpolated~.-Iteration, dt)
+
+#Поиск утечки данных, убираем по одной 
+varlist <- colnames(dt)
+tableslist <- list()
+varlist <- varlist[varlist != "G_spread_interpolated"]
+varlist <- varlist[varlist != "Year"]
+varlist <- varlist[varlist != "Month"]
+varlist <- varlist[varlist != "Index"]
+
+dt_copy <- copy(dt)
+dt_copy[, "Index" := NULL]
+for (m in 1:length(varlist)){
+i <- varlist[m]
+print(i)
+dt <- copy(dt_copy)
+dt[, (i) := NULL]
+print(colnames(dt))
+dt[, "Index" := 1:.N]
+
+dt[, "Iteration" := sample(1:5, .N, replace = T)]
+
+modelsvm <- svm(get("G_spread_interpolated")~.-Iteration,data = dt[Iteration != 1], gamma = 0.0001, cost = 100, epsilon = 0.001)
+a <- MakePrediction(modelsvm, dt[Iteration == 1], ISINs = dt_isin[dt$Iteration==1])
+for (i in 2:5){
+  start <- Sys.time()
+  modelsvm <- svm(get("G_spread_interpolated")~.-Iteration,data = dt[Iteration != i], gamma = 0.0001, cost = 100, epsilon = 0.001)
+  anew <- MakePrediction(modelsvm, dt[Iteration == i], ISINs = dt_isin[dt$Iteration==i])
+  a <- rbind(a, anew)
+  Sys.time() - start
+}
+a[, "Year" := sapply(Year, mapyear, years = a$Year)]
+a[, "Month" := sapply(Month, mapmonth, months = a$Month)]
+#поправить порядки переменных
+a[, "Variable" := Variable*100]
+a[, "Errors" := Errors*100]
+a[, "Predictions" := Predictions*100]
+
+tableslist[[m]] <- a}
+means <- do.call(cbind,lapply(tableslist, function(x){x[, mean(Errors)]}))
+absmeans <- do.call(cbind,lapply(tableslist, function(x){x[, MAE(Predictions, Variable)]}))
+sds <- do.call(cbind,lapply(tableslist, function(x){x[, sd(Errors)]}))
+transpose(means)
+typeof(means)
+leakage_table <- data.table("Variable_dropped" = varlist, "Mean" = means[1,], "MAE" = absmeans[1,], "SD" = sds[1,])
+write.xlsx(leakage_table, "LeakageSearchTable.xlsx")
+
+#Поиск утечки данных, добавляем по одной 
+varlist <- colnames(dt)
+tableslist <- list()
+varlist <- varlist[varlist != "G_spread_interpolated"]
+varlist <- varlist[varlist != "Year"]
+varlist <- varlist[varlist != "Month"]
+varlist <- varlist[varlist != "Index"]
+
+dt_copy <- copy(dt)
+dt_g <- dt_copy$G_spread_interpolated
+dt_copy[, "Index" := NULL]
+for (m in 1:length(varlist)){
+  dt <- dt_copy[,1:(3+m)]
+  dt[, "G_spread_interpolated" := dt_g]
+
+  print(colnames(dt))
+  dt[, "Index" := 1:.N]
+  
+  dt[, "Iteration" := sample(1:5, .N, replace = T)]
+  
+  modelsvm <- svm(get("G_spread_interpolated")~.-Iteration,data = dt[Iteration != 1], gamma = 0.0001, cost = 100, epsilon = 0.001)
+  a <- MakePrediction(modelsvm, dt[Iteration == 1], ISINs = dt_isin[dt$Iteration==1])
+  for (i in 2:5){
+    start <- Sys.time()
+    modelsvm <- svm(get("G_spread_interpolated")~.-Iteration,data = dt[Iteration != i], gamma = 0.0001, cost = 100, epsilon = 0.001)
+    anew <- MakePrediction(modelsvm, dt[Iteration == i], ISINs = dt_isin[dt$Iteration==i])
+    a <- rbind(a, anew)
+    Sys.time() - start
+  }
+  a[, "Year" := sapply(Year, mapyear, years = a$Year)]
+  a[, "Month" := sapply(Month, mapmonth, months = a$Month)]
+  #поправить порядки переменных
+  a[, "Variable" := Variable*100]
+  a[, "Errors" := Errors*100]
+  a[, "Predictions" := Predictions*100]
+  
+  tableslist[[m]] <- a}
+means <- do.call(cbind,lapply(tableslist, function(x){x[, mean(Errors)]}))
+absmeans <- do.call(cbind,lapply(tableslist, function(x){x[, MAE(Predictions, Variable)]}))
+sds <- do.call(cbind,lapply(tableslist, function(x){x[, sd(Errors)]}))
+transpose(means)
+typeof(means)
+leakage_table <- data.table("Variable_dropped" = varlist, "Mean" = means[1,], "MAE" = absmeans[1,], "SD" = sds[1,])
+write.xlsx(leakage_table, "LeakageSearchTableBackwards.xlsx")
+
+#а что если вообще все переменные повыкидывать?
+modelsvm <- svm(get("G_spread_interpolated")~.,data = dt[Iteration!=4, c(1,29)], gamma = 0.0001, cost = 100, epsilon = 0.001)
+preds <- MakePrediction(modelsvm, dt[Iteration==4, c(1,29)])
+preds[, MAE(Variable*100, Predictions*100)]
+preds[, mean(Errors*100)]
+#а если вручную делать предикшны при этом
+preds_manual <- predict(modelsvm, dt[Iteration==4, c(1,29)])
+errors <- dt[Iteration==4, c(1,29)]$G_spread_interpolated-preds_manual
+MAE(preds_manual*100, dt[Iteration==4, c(1,29)]$G_spread_interpolated*100)
+mean(errors*100)
+
+#а что если попытаться линейной моделью?
+linmod <- lm(G_spread_interpolated~.-Iteration, dt[Iteration!=4])
+preds <- MakePrediction(linmod, dt[Iteration==4])
+preds[, MAE(Variable*100, Predictions*100)]
+preds[, mean(Errors*100)]
 summary(linmod)
-library(FNN)
+
+#симулированные данные? 
+dt_sim <- data.table("y" = rnorm(100, mean=mean(dt$G_spread_interpolated), sd = sd(dt$G_spread_interpolated)), "x" = rnorm(100, mean=mean(dt$Year), sd = sd(dt$Year)), "Iteration" = sample(1:5,10000,replace = T))
+plot(x=dt_sim$x, y = dt_sim$y)
+modelsvm <- svm(get("y")~.,data = dt_sim[Iteration!=4, c(1,2)], gamma = 0.0001, cost = 100, epsilon = 0.001)
+preds_manual <- predict(modelsvm, dt_sim[Iteration==4, c(1,2)])
+errors <- dt_sim[Iteration==4, c(1,2)]$y-preds_manual
+MAE(preds_manual*100, dt_sim[Iteration==4, c(1,2)]$y*100)
+mean(errors*100)
+
+#другая функция
+install.packages("libsvm")
+library(libsvm)
+libsvm::svm()
+
+
+
+#knn
 dt_for_knn <- copy(dt)
 dt_for_knn[, "Currency" := NULL]
 dt_for_knn[, "Exch_name" := NULL]
