@@ -60,6 +60,8 @@ gm_mean = function(x, na.rm=TRUE){
 #Чистит данные: превращает качественные переменные в факторы, отсутствующие в нули,
 #добавляет лаги зависимой переменной, если Average = T - усредняет значения зависимой переменной,
 #если State = T - делает это все для государственных банков, иначе - только для частных
+g <- data.table("x" = c(1,2,3,4,5,6), "y" = c("a", "a", "a", "b", "b", "b"))
+g[, shift(x,1L, fill=NA, type = "lag"), by = y]
 CleanData <- function(Table, Variable, Average = F, State = F){
   
   Table <- Table[State_bank == State*1]
@@ -93,8 +95,12 @@ CleanData <- function(Table, Variable, Average = F, State = F){
     smpl_dt_norm_av_strings <- smpl_dt_norm_av_strings[, (c("ISIN", "Year", "Month")) := NULL]
     smpl_dt_norm_av <- Table[, lapply(.SD, function(x){mean(x, na.rm = T)}), by = c("ISIN", "Year", "Month"), .SDcols = !c("Currency", "Exch_name", "Indicative_yield_type")]
     Table <- cbind(smpl_dt_norm_av, smpl_dt_norm_av_strings)
+    Table[, c("LaggedYTM") := .(shift(get(Variable), 1L, fill = NA, type = "lag")), by = c("ISIN")]
+    Table[is.na(LaggedYTM), "LaggedYTM" := mean(LaggedYTM, na.rm = T), by = c("ISIN", "Month", "Year")]
     ISINs <- Table$ISIN
     Table[, "ISIN" := NULL]
+
+        
   }
   if (Average == "Med"){
     smpl_dt_norm_av_strings <- Table[, .SD[1],.SDcols = c("Currency", "Exch_name", "Indicative_yield_type"),  by = c("ISIN", "Year", "Month")] 
@@ -209,15 +215,14 @@ dt_not_norm <- CleanData(smpl_dt, "G_spread_interpolated", Average = T)$Table
 dt_not_norm_isin <- CleanData(smpl_dt, "G_spread_interpolated", Average = T)$ISIN
 
 #Получение out-of-sample ошибок на оптимальной модели и очистка данных
-dt[, "Index" := 1:.N]
 
 dt[, "Iteration" := sample(1:5, .N, replace = T)]
 
-modelsvm <- svm(get("G_spread_interpolated")~.-Iteration,data = dt[Iteration != 1], gamma = 0.0001, cost = 100, epsilon = 0.001)
+modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt[Iteration != 1], gamma = 0.001, cost = 100, epsilon = 0.01)
 a <- MakePrediction(modelsvm, dt[Iteration == 1], ISINs = dt_isin[dt$Iteration==1])
 for (i in 2:5){
   start <- Sys.time()
-  modelsvm <- svm(get("G_spread_interpolated")~.-Iteration,data = dt[Iteration != i], gamma = 0.0001, cost = 100, epsilon = 0.001)
+  modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt[Iteration != i], gamma = 0.001, cost = 100, epsilon = 0.01)
   anew <- MakePrediction(modelsvm, dt[Iteration == i], ISINs = dt_isin[dt$Iteration==i])
   a <- rbind(a, anew)
   Sys.time() - start
@@ -229,6 +234,7 @@ a[, "Variable" := Variable*100]
 a[, "Errors" := Errors*100]
 a[, "Predictions" := Predictions*100]
 
+a[, mean(Variable)]
 a[, mean(Errors)]
 a[, sd(Errors)]
 a[, MAE(Variable, Predictions)]
@@ -324,14 +330,14 @@ leakage_table <- data.table("Variable_dropped" = varlist, "Mean" = means[1,], "M
 write.xlsx(leakage_table, "LeakageSearchTableBackwards.xlsx")
 
 #а что если вообще все переменные повыкидывать?
-modelsvm <- svm(get("G_spread_interpolated")~.,data = dt[Iteration!=4, c(1,29)], gamma = 0.0001, cost = 100, epsilon = 0.001)
+modelsvm <- svm(G_spread_interpolated~.,data = dt[Iteration!=4, c(1,29)], gamma = 0.0001, cost = 100, epsilon = 0.001)
 preds <- MakePrediction(modelsvm, dt[Iteration==4, c(1,29)])
 preds[, MAE(Variable*100, Predictions*100)]
 preds[, mean(Errors*100)]
 #а если вручную делать предикшны при этом
-preds_manual <- predict(modelsvm, dt[Iteration==4, c(1,29)])
-errors <- dt[Iteration==4, c(1,29)]$G_spread_interpolated-preds_manual
-MAE(preds_manual*100, dt[Iteration==4, c(1,29)]$G_spread_interpolated*100)
+preds_manual <- predict(modelsvm, dt[Iteration==5])
+errors <- dt[(Iteration==5)&(!is.na(LaggedYTM))]$G_spread_interpolated-preds_manual
+MAE(preds_manual*100, dt[(Iteration==5)&(!is.na(LaggedYTM))]$G_spread_interpolated*100)
 mean(errors*100)
 
 #а что если попытаться линейной моделью?
@@ -342,11 +348,11 @@ preds[, mean(Errors*100)]
 summary(linmod)
 
 #симулированные данные? 
-dt_sim <- data.table("y" = rnorm(100, mean=mean(dt$G_spread_interpolated), sd = sd(dt$G_spread_interpolated)), "x" = rnorm(100, mean=mean(dt$Year), sd = sd(dt$Year)), "Iteration" = sample(1:5,10000,replace = T))
+dt_sim <- data.table("y" = rnorm(10000, mean=mean(dt$G_spread_interpolated), sd = sd(dt$G_spread_interpolated)), "x" = rnorm(10000, mean=mean(dt$Year), sd = sd(dt$Year)), "Iteration" = sample(1:5,10000,replace = T))
 plot(x=dt_sim$x, y = dt_sim$y)
-modelsvm <- svm(get("y")~.,data = dt_sim[Iteration!=4, c(1,2)], gamma = 0.0001, cost = 100, epsilon = 0.001)
-preds_manual <- predict(modelsvm, dt_sim[Iteration==4, c(1,2)])
-errors <- dt_sim[Iteration==4, c(1,2)]$y-preds_manual
+modelsvm <- svm(y~.,data = dt_sim[Iteration!=4, c(1)], gamma = 0.0001, cost = 100, epsilon = 0.001)
+preds_manual <- predict(modelsvm, dt_sim[Iteration==4, c(1)])
+errors <- dt_sim[Iteration==4, c(1)]$y-preds_manual
 MAE(preds_manual*100, dt_sim[Iteration==4, c(1,2)]$y*100)
 mean(errors*100)
 
