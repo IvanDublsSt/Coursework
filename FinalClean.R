@@ -6,6 +6,10 @@ library(stringr)
 library(e1071)
 library(FNN)
 library(MLmetrics)
+library(foreach)
+library(doParallel)
+install.packages("randomForest")
+library(randomForest)
 
 setwd("C:/Coursework/Data_coursework")
 Sys.setenv(LANG = "en")
@@ -95,8 +99,16 @@ CleanData <- function(Table, Variable, Average = F, State = F){
     smpl_dt_norm_av_strings <- smpl_dt_norm_av_strings[, (c("ISIN", "Year", "Month")) := NULL]
     smpl_dt_norm_av <- Table[, lapply(.SD, function(x){mean(x, na.rm = T)}), by = c("ISIN", "Year", "Month"), .SDcols = !c("Currency", "Exch_name", "Indicative_yield_type")]
     Table <- cbind(smpl_dt_norm_av, smpl_dt_norm_av_strings)
-    Table[, c("LaggedYTM") := .(shift(get(Variable), 1L, fill = NA, type = "lag")), by = c("ISIN")]
-    Table[is.na(LaggedYTM), "LaggedYTM" := mean(LaggedYTM, na.rm = T), by = c("ISIN", "Month", "Year")]
+    Table[, c("LaggedYTM","LaggedYTM2", "LaggedYTM3") := .(shift(get(Variable), 1L, fill = NA, type = "lag"),
+                                                           shift(get(Variable), 2L, fill = NA, type = "lag"),
+                                                           shift(get(Variable), 3L, fill = NA, type = "lag")), by = "ISIN"]    
+    Table[, c("MeanLaggedYTM","MeanLaggedYTM2", "MeanLaggedYTM3") := .(mean(LaggedYTM, na.rm = T),
+                                                                    mean(LaggedYTM2, na.rm = T),
+                                                                    mean(LaggedYTM3, na.rm = T)), by = c("Year")] 
+    Table[is.na(LaggedYTM),"LaggedYTM":=MeanLaggedYTM]
+    Table[is.na(LaggedYTM2),"LaggedYTM2":=MeanLaggedYTM2]
+    Table[is.na(LaggedYTM3),"LaggedYTM3":=MeanLaggedYTM3]
+    Table[, c("MeanLaggedYTM","MeanLaggedYTM2", "MeanLaggedYTM3") := .(NULL, NULL, NULL)]
     ISINs <- Table$ISIN
     Table[, "ISIN" := NULL]
 
@@ -210,6 +222,7 @@ smpl_dt[,"ReturnEquityDay" := NULL]
 smpl_dt_norm <- cbind(znorm_table(smpl_dt[, !c("G_spread", "G_spread_interpolated", "YTM_ind_main", "Moscow", "State_bank")]), smpl_dt[, c("G_spread", "G_spread_interpolated", "YTM_ind_main", "Moscow", "State_bank")])
 dt <- CleanData(smpl_dt_norm, "G_spread_interpolated", Average = T)$Table
 dt_isin <- CleanData(smpl_dt_norm, "G_spread_interpolated", Average = T)$ISIN
+
 #получаем ненормированные таблицы на всякий случай 
 dt_not_norm <- CleanData(smpl_dt, "G_spread_interpolated", Average = T)$Table
 dt_not_norm_isin <- CleanData(smpl_dt, "G_spread_interpolated", Average = T)$ISIN
@@ -361,8 +374,149 @@ install.packages("libsvm")
 library(libsvm)
 libsvm::svm()
 
+#подбор гиперпараметров SVM####
+foreach (i=1:3) %do% {
+  foreach(r=c("a", "b", "c"))%do%
+            {paste(r, i)}
+}
+numCores <- detectCores()
+registerDoParallel(numCores-2)
+CrossValidateSVM <- function(gamma, cost, epsilon){
+  
+
+dt[, "Iteration" := sample(1:5, .N, replace = T)]
+localsupera <- foreach(i = 1:5)%do%{
+  modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt[Iteration != i], gamma = gamma, cost = cost, epsilon = epsilon)
+  anew <- MakePrediction(modelsvm, dt[Iteration == i], ISINs = dt_isin[dt$Iteration==i])
+  anew
+}
+localsupera <- do.call(rbind, localsupera)
+# modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt[Iteration != 1], gamma = gamma, cost = cost, epsilon = epsilon)
+# a <- MakePrediction(modelsvm, dt[Iteration == 1], ISINs = dt_isin[dt$Iteration==1])
+# for (i in 2:10){
+#   start <- Sys.time()
+#   modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt[Iteration != i], gamma = gamma, cost = cost, epsilon = epsilon)
+#   anew <- MakePrediction(modelsvm, dt[Iteration == i], ISINs = dt_isin[dt$Iteration==i])
+#   a <- rbind(a, anew)
+#   Sys.time() - start
+# }
+localsupera[, "Year" := sapply(Year, mapyear, years = localsupera$Year)]
+localsupera[, "Month" := sapply(Month, mapmonth, months = localsupera$Month)]
+#поправить порядки переменных
+localsupera[, "Variable" := Variable*100]
+localsupera[, "Errors" := Errors*100]
+localsupera[, "Predictions" := Predictions*100]
+return(localsupera)}
+
+start<-Sys.time()
+a<-CrossValidateSVM(gamma = 0.001, 100, 0.01)
+Sys.time() - start
+a[, mean(Errors)]
+a[, mean(Variable)]
+a[, MAE(Variable, Predictions)]
+
+gammas <- c(0.0001, 0.001, 0.01)
+costs <- c(10, 100, 1000)
+epsilons <- c(0.01, 0.005, 0.001)
+
+supertable <- foreach(cost=costs)%do%{
+  foreach(gamma = gammas)%do%{
+    foreach(epsilon = epsilons)%do%{
+      list(CrossValidateSVM(gamma = gamma, epsilon = epsilon, cost=cost), paste(cost,gamma,epsilon))
+    }
+  }
+}
+
+saveRDS(supertable, "HyperparametersRawSVM.rds")
+supertable2 <-unlist(supertable, recursive = F)
+supertable3 <-unlist(supertable2, recursive = F)
+supertable_final <- lapply(supertable3, function(x){x[[1]]})
+names(supertable_final) <- lapply(supertable3, function(x){x[[2]]})
+saveRDS(supertable_final, "HyperparametersSVM.rds")
+
+SVM_MAEs <- lapply(supertable_final, function(x){x[, MAE(Predictions,Variable)]})
+SVM_MAEs <- unlist(SVM_MAEs, recursive = F)
+SVM_MAEs[order(SVM_MAEs)]
+saveRDS(SVM_MAEs[order(SVM_MAEs)], "HyperparametersMAESVM.rds")
+
+best_svm_results <- supertable_final$`10 0.01 0.005`
+best_svm_results_no01 <- best_svm_results[(Variable <= quantile(best_svm_results$Variable, 0.9))&(Variable >= quantile(best_svm_results$Variable, 0.1))]
+best_svm_results_no01[, MAE(Predictions,Variable)]
 
 
+dt[, "Iteration" := sample(1:5, .N, replace = T)]
+dt_no <- dt[(G_spread_interpolated <= quantile(dt$G_spread_interpolated, 0.9))&(G_spread_interpolated >= quantile(dt$G_spread_interpolated, 0.1))]
+dt_isin_no <- dt_isin[(dt$G_spread_interpolated <= quantile(dt$G_spread_interpolated, 0.9))&(dt$G_spread_interpolated >= quantile(dt$G_spread_interpolated, 0.1))]
+
+modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt_no[Iteration != 1], gamma = 10, cost = 0.01, epsilon = 0.005)
+a <- MakePrediction(modelsvm, dt_no[Iteration == 1], ISINs = dt_isin_no[dt_no$Iteration == 1])
+for (i in 2:5){
+  start <- Sys.time()
+  modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt_no[Iteration != i], gamma = 10, cost = 0.01, epsilon = 0.005)
+  anew <- MakePrediction(modelsvm, dt_no[Iteration == i], ISINs = dt_isin_no[dt_no$Iteration == i])
+  print(anew)
+  a <- rbind(a, anew)
+  print(Sys.time() - start)
+}
+a <- do.call(rbind, a)
+a[, "Year" := sapply(Year, mapyear, years = a$Year)]
+a[, "Month" := sapply(Month, mapmonth, months = a$Month)]
+a[, "Variable" := Variable*100]
+a[, "Errors" := Errors*100]
+a[, "Predictions" := Predictions*100]
+a[, MAE(Predictions, Variable)]
+#подбор гиперпараметров RF####
+foreach (i=1:3) %do% {
+  foreach(r=c("a", "b", "c"))%do%
+    {paste(r, i)}
+}
+numCores <- detectCores()
+registerDoParallel(numCores-2)
+CrossValidateRF <- function(gamma, cost, epsilon){
+  
+  
+  dt[, "Iteration" := sample(1:5, .N, replace = T)]
+  localsupera <- foreach(i = 1:5)%do%{
+    modelsvm <- randomForest(G_spread_interpolated~.-Iteration,data = dt[Iteration != i], gamma = gamma, cost = cost, epsilon = epsilon)
+    anew <- MakePrediction(modelsvm, dt[Iteration == i], ISINs = dt_isin[dt$Iteration==i])
+    anew
+  }
+  localsupera <- do.call(rbind, localsupera)
+  # modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt[Iteration != 1], gamma = gamma, cost = cost, epsilon = epsilon)
+  # a <- MakePrediction(modelsvm, dt[Iteration == 1], ISINs = dt_isin[dt$Iteration==1])
+  # for (i in 2:10){
+  #   start <- Sys.time()
+  #   modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt[Iteration != i], gamma = gamma, cost = cost, epsilon = epsilon)
+  #   anew <- MakePrediction(modelsvm, dt[Iteration == i], ISINs = dt_isin[dt$Iteration==i])
+  #   a <- rbind(a, anew)
+  #   Sys.time() - start
+  # }
+  localsupera[, "Year" := sapply(Year, mapyear, years = localsupera$Year)]
+  localsupera[, "Month" := sapply(Month, mapmonth, months = localsupera$Month)]
+  #поправить порядки переменных
+  localsupera[, "Variable" := Variable*100]
+  localsupera[, "Errors" := Errors*100]
+  localsupera[, "Predictions" := Predictions*100]
+  return(localsupera)}
+
+start<-Sys.time()
+a<-CrossValidateSVM(gamma = 0.001, 100, 0.01)
+Sys.time() - start
+a[, mean(Errors)]
+a[, mean(Variable)]
+a[, MAE(Variable, Predictions)]
+
+gammas <- c(0.0001, 0.001, 0.01)
+costs <- c(10, 100, 1000)
+epsilons <- c(0.01, 0.005, 0.001)
+
+foreach(cost=costs)%do%{
+  foreach(gamma = gammas)%do%{
+    foreach(epsilon = epsilons)%do%{
+      list(CrossValidateSVM(gamma = gamma, epsilon = epsilon, cost=cost), paste(cost,gamma,epsilon))
+    }
+  }
+}
 #knn
 dt_for_knn <- copy(dt)
 dt_for_knn[, "Currency" := NULL]
