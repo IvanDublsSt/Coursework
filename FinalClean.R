@@ -438,7 +438,7 @@ SVM_MAEs <- lapply(supertable_final, function(x){x[, MAE(Predictions,Variable)]}
 SVM_MAEs <- unlist(SVM_MAEs, recursive = F)
 SVM_MAEs[order(SVM_MAEs)]
 saveRDS(SVM_MAEs[order(SVM_MAEs)], "HyperparametersMAESVM.rds")
-
+read
 best_svm_results <- supertable_final$`10 0.01 0.005`
 best_svm_results_no01 <- best_svm_results[(Variable <= quantile(best_svm_results$Variable, 0.9))&(Variable >= quantile(best_svm_results$Variable, 0.1))]
 best_svm_results_no01[, MAE(Predictions,Variable)]
@@ -472,12 +472,17 @@ foreach (i=1:3) %do% {
 }
 numCores <- detectCores()
 registerDoParallel(numCores-2)
-CrossValidateRF <- function(gamma, cost, epsilon){
+dt[, "Iteration" := sample(1:5, .N, replace = T)]
+a <- randomForest(G_spread_interpolated~.-Iteration,data = dt[Iteration != 1][1:500], xtest = dt[Iteration == 1,-c("Iteration", "G_spread_interpolated")][1:600], keep.forest = T)
+mean(a$test$predicted)
+MakePrediction(a, dt[Iteration == 1,][1:600])
+
+CrossValidateRF <- function(numvariables){
   
   
   dt[, "Iteration" := sample(1:5, .N, replace = T)]
   localsupera <- foreach(i = 1:5)%do%{
-    modelsvm <- randomForest(G_spread_interpolated~.-Iteration,data = dt[Iteration != i], gamma = gamma, cost = cost, epsilon = epsilon)
+    modelsvm <- randomForest(G_spread_interpolated~.-Iteration,data = dt[Iteration != i],keep.forest = T, mtry = numvariables, ntree=1000)
     anew <- MakePrediction(modelsvm, dt[Iteration == i], ISINs = dt_isin[dt$Iteration==i])
     anew
   }
@@ -500,23 +505,46 @@ CrossValidateRF <- function(gamma, cost, epsilon){
   return(localsupera)}
 
 start<-Sys.time()
-a<-CrossValidateSVM(gamma = 0.001, 100, 0.01)
+a<-CrossValidateRF(numvariables = 10)
 Sys.time() - start
 a[, mean(Errors)]
 a[, mean(Variable)]
 a[, MAE(Variable, Predictions)]
 
-gammas <- c(0.0001, 0.001, 0.01)
-costs <- c(10, 100, 1000)
-epsilons <- c(0.01, 0.005, 0.001)
 
-foreach(cost=costs)%do%{
-  foreach(gamma = gammas)%do%{
-    foreach(epsilon = epsilons)%do%{
-      list(CrossValidateSVM(gamma = gamma, epsilon = epsilon, cost=cost), paste(cost,gamma,epsilon))
-    }
-  }
+
+supertableRF <- foreach(numvariables=c(5, 10, 15, 20, 30))%do%{
+      list(CrossValidateRF(numvariables=numvariables), numvariables)
 }
+saveRDS(supertableRF, "HyperparametersRawSVM.rds")
+
+supertableRF <- readRDS("HyperparametersRawSVM.rds")
+supertableRF_final <- lapply(supertableRF, function(x){x[[1]]})
+names(supertableRF_final) <- lapply(supertableRF, function(x){x[[2]]})
+saveRDS(supertableRF_final, "HyperparametersRF.rds")
+
+RF_MAEs <- lapply(supertableRF_final, function(x){x[, MAE(Predictions,Variable)]})
+RF_MAEs <- unlist(RF_MAEs, recursive = F)
+RF_MAEs[order(RF_MAEs)]
+saveRDS(RF_MAEs[order(RF_MAEs)], "HyperparametersMAESVM.rds")
+
+
+dt_no <- dt[(G_spread_interpolated <= quantile(dt$G_spread_interpolated, 0.9))&(G_spread_interpolated >= quantile(dt$G_spread_interpolated, 0.1))]
+dt_isin_no <- dt_isin[(dt$G_spread_interpolated <= quantile(dt$G_spread_interpolated, 0.9))&(dt$G_spread_interpolated >= quantile(dt$G_spread_interpolated, 0.1))]
+
+localsupera <- foreach(i = 1:5)%do%{
+  modelsvm <- randomForest(G_spread_interpolated~.-Iteration,data = dt_no[Iteration != i],keep.forest = T, mtry = 30, ntree=1000)
+  anew <- MakePrediction(modelsvm, dt_no[Iteration == i], ISINs = dt_isin_no[dt_no$Iteration==i])
+  anew
+}
+localsupera <- do.call(rbind, localsupera)
+localsupera[, "Year" := sapply(Year, mapyear, years = localsupera$Year)]
+localsupera[, "Month" := sapply(Month, mapmonth, months = localsupera$Month)]
+localsupera[, "Variable" := Variable*100]
+localsupera[, "Errors" := Errors*100]
+localsupera[, "Predictions" := Predictions*100]
+localsupera[, MAE(Predictions, Variable)]
+
 #knn
 dt_for_knn <- copy(dt)
 dt_for_knn[, "Currency" := NULL]
