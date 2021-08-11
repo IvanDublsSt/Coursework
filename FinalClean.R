@@ -230,16 +230,36 @@ dt_not_norm_isin <- CleanData(smpl_dt, "G_spread_interpolated", Average = T)$ISI
 #Получение out-of-sample ошибок на оптимальной модели и очистка данных
 
 dt[, "Iteration" := sample(1:5, .N, replace = T)]
+dt_no <- dt[(G_spread_interpolated <= quantile(dt$G_spread_interpolated, 0.9))&(G_spread_interpolated >= quantile(dt$G_spread_interpolated, 0.1))]
+dt_isin_no <- dt_isin[(dt$G_spread_interpolated <= quantile(dt$G_spread_interpolated, 0.9))&(dt$G_spread_interpolated >= quantile(dt$G_spread_interpolated, 0.1))]
 
-modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt[Iteration != 1], gamma = 0.001, cost = 100, epsilon = 0.01)
-a <- MakePrediction(modelsvm, dt[Iteration == 1], ISINs = dt_isin[dt$Iteration==1])
+modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt_no[Iteration != 1], gamma = 10, cost = 0.01, epsilon = 0.005)
+a <- MakePrediction(modelsvm, dt_no[Iteration == 1], ISINs = dt_isin_no[dt_no$Iteration==1])
+# for (i in 2:5){
+#   start <- Sys.time()
+#   modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt_isin_no[Iteration != i], gamma = 0.001, cost = 100, epsilon = 0.01)
+#   anew <- MakePrediction(modelsvm, dt_no[Iteration == i], ISINs = dt_isin_no[dt_no$Iteration==i])
+#   a <- rbind(a, anew)
+#   Sys.time() - start
+# }
+
 for (i in 2:5){
   start <- Sys.time()
-  modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt[Iteration != i], gamma = 0.001, cost = 100, epsilon = 0.01)
-  anew <- MakePrediction(modelsvm, dt[Iteration == i], ISINs = dt_isin[dt$Iteration==i])
+  modelsvm <- svm(G_spread_interpolated~.-Iteration,data = dt_no[Iteration != i], gamma = 10, cost = 0.01, epsilon = 0.005)
+  anew <- MakePrediction(modelsvm, dt_no[Iteration == i], ISINs = dt_isin_no[dt_no$Iteration == i])
+  print(anew)
   a <- rbind(a, anew)
-  Sys.time() - start
+  print(Sys.time() - start)
 }
+a <- do.call(rbind, a)
+a[, "Year" := sapply(Year, mapyear, years = a$Year)]
+a[, "Month" := sapply(Month, mapmonth, months = a$Month)]
+a[, "Variable" := Variable*100]
+a[, "Errors" := Errors*100]
+a[, "Predictions" := Predictions*100]
+a[, MAE(Predictions, Variable)]
+
+
 a[, "Year" := sapply(Year, mapyear, years = a$Year)]
 a[, "Month" := sapply(Month, mapmonth, months = a$Month)]
 #поправить порядки переменных
@@ -251,6 +271,23 @@ a[, mean(Variable)]
 a[, mean(Errors)]
 a[, sd(Errors)]
 a[, MAE(Variable, Predictions)]
+##### оптимальная модель
+dt_no <- dt[(G_spread_interpolated <= quantile(dt$G_spread_interpolated, 0.9))&(G_spread_interpolated >= quantile(dt$G_spread_interpolated, 0.1))]
+dt_isin_no <- dt_isin[(dt$G_spread_interpolated <= quantile(dt$G_spread_interpolated, 0.9))&(dt$G_spread_interpolated >= quantile(dt$G_spread_interpolated, 0.1))]
+
+localsupera <- foreach(i = 1:5)%do%{
+  modelsvm <- randomForest(G_spread_interpolated~.-Iteration,data = dt_no[Iteration != i],keep.forest = T, mtry = 30, ntree=1000)
+  anew <- MakePrediction(modelsvm, dt_no[Iteration == i], ISINs = dt_isin_no[dt_no$Iteration==i])
+  anew
+}
+localsupera <- do.call(rbind, localsupera)
+localsupera[, "Year" := sapply(Year, mapyear, years = localsupera$Year)]
+localsupera[, "Month" := sapply(Month, mapmonth, months = localsupera$Month)]
+localsupera[, "Variable" := Variable*100]
+localsupera[, "Errors" := Errors*100]
+localsupera[, "Predictions" := Predictions*100]
+localsupera[, MAE(Predictions, Variable)]
+
 
 #Поиск утечки данных, убираем по одной 
 varlist <- colnames(dt)
@@ -458,7 +495,6 @@ for (i in 2:5){
   a <- rbind(a, anew)
   print(Sys.time() - start)
 }
-a <- do.call(rbind, a)
 a[, "Year" := sapply(Year, mapyear, years = a$Year)]
 a[, "Month" := sapply(Month, mapmonth, months = a$Month)]
 a[, "Variable" := Variable*100]
@@ -580,31 +616,38 @@ dt_with_isin[, "Month" := sapply(Month, mapmonth, months = dt_with_isin$Month)]
 a_added <- merge(a, dt_with_isin, by = c("ISIN", "Month", "Year"))
 
 #сохранить результат
-saveRDS(a, "ResidualsTableOutOfSampleCheck.rds")
+saveRDS(localsupera, "ResidualsTableOutOfSampleCheck.rds")
 
 #получаем лучшую модель, обученную на всех данных по частным банкам
 dt[,"Iteration":=NULL]
-modelsvm <- svm(get("G_spread_interpolated")~.,data = dt, gamma = 0.0001, cost = 100, epsilon = 0.001)
+modelsvm <- randomForest(G_spread_interpolated~.-Iteration,data = dt_no,keep.forest = T, mtry = 30, ntree=1000)
 saveRDS(modelsvm, "BestModelCheck.rds")
 #получение дифференциалов на этой модели
 modelsvm <- readRDS("BestModelCheck.rds")
 dt_state <- CleanData(smpl_dt_norm, "G_spread_interpolated", Average = T, State = T)$Table
+dt_state[, "Iteration":=1]
 dt_state_isin <- CleanData(smpl_dt_norm, "G_spread_interpolated", Average = T, State = T)$ISIN
-dt_state[, "ISIN" := dt_state_isin]
+dt_state_no <- dt_state[(G_spread_interpolated <= quantile(dt$G_spread_interpolated, 0.9))&(G_spread_interpolated >= quantile(dt$G_spread_interpolated, 0.1))]
+dt_state_isin_no <- dt_state_isin[(dt_state$G_spread_interpolated <= quantile(dt$G_spread_interpolated, 0.9))&(dt_state$G_spread_interpolated >= quantile(dt$G_spread_interpolated, 0.1))]
+dt_state_no[, "ISIN" := dt_state_isin_no]
 ##несколько манипуляций с форматом данных, без которых не обучалась модель
 #проверить списки факторов !!!
-dt_state <- subset(dt_state, Currency %in% levels(dt$Currency))
-dt_state$Currency <- droplevels(dt_state$Currency)
-dt_state <- subset(dt_state,Exch_name %in% levels(dt$Exch_name))
-dt_state$Exch_name <- droplevels(dt_state$Exch_name)
-levels(dt_state$Exch_name) <- levels(dt$Exch_name)
-levels(dt_state$Currency) <- levels(dt$Currency)
-dt_state_isin <- dt_state$ISIN
+dt_state_no <- subset(dt_state_no, Currency %in% levels(dt_no$Currency))
+dt_state_no$Currency <- droplevels(dt_state_no$Currency)
+dt_state_no <- subset(dt_state_no,Exch_name %in% levels(dt_no$Exch_name))
+dt_state_no$Exch_name <- droplevels(dt_state_no$Exch_name)
+levels(dt_state_no$Exch_name) <- levels(dt_no$Exch_name)
+levels(dt_state_no$Currency) <- levels(dt_no$Currency)
+dt_state_isin_no <- dt_state_no$ISIN
 ##получаем прогноз для государственных банков на той же модели
-m <- MakePrediction(modelsvm, dt_state, ISINs = dt_state_isin)
+m <- MakePrediction(modelsvm, dt_state_no, ISINs = dt_state_isin_no)
 m[, "Year" := sapply(Year, mapyear, years = m$Year)]
 m[, "Month" := sapply(Month, mapmonth, months = m$Month)]
 m[, "Errors" := -Errors]
+m[, "Variable" := Variable*100]
+m[, "Errors" := Errors*100]
+m[, "Predictions" := Predictions*100]
+m[, MAE(Predictions, Variable)]
 saveRDS(m, "DifferentialsTableCheck.rds")
 mean(m$Errors)
 #Загрузка и очистка данных
