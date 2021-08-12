@@ -3,7 +3,7 @@ library(openxlsx)
 library(stringr)
 library(e1071)
 
-setwd("C:/Users/Fride/OneDrive/Рабочий стол/Coursework/Data_coursework")
+setwd("C:/Coursework/Data_coursework")
 Sys.setenv(LANG = "en")
 
 mapyear <- function(year, years){
@@ -991,15 +991,16 @@ library(hrbrthemes)
 mean((m$Errors))
 mean((predict(modelsvm$best.model, dt_state)-dt_state$G_spread_interpolated))
 
+m <- readRDS("DifferentialsTableCheck.rds")
 m[order(Year, Month), mean(Errors), by = c("Year", "Month")]
 plot()
 p <- ggplot(m, aes(x=Errors)) + 
   geom_histogram()
 p
 m[, paste(Year, Month)]
-m_averages <- m[, mean(-Errors), by = c("Year", "Month")]
+m_averages <- m[, mean(Errors), by = c("Year", "Month")]
 breaks <- c("2015 1", "2016 1", "2017 1", "2018 1", "2019 1", "2020 1")
-png("TimeSeriesState.png", width = 700, height = 400)
+png("TimeSeriesStateNew.png", width = 700, height = 400)
 ggplot(m_averages, aes(y=V1, x=paste(Year, Month))) + 
   geom_bar(stat = "identity") + scale_x_discrete(breaks = breaks) + theme_ipsum()+
   ylab("Error") + xlab("Date")
@@ -1009,7 +1010,7 @@ dev.off()
 dt[, "Prediction" := predict(modelsvm$best.model, dt)]
 dt[, "Error" := Prediction - G_spread_interpolated]
 
-a <- readRDS("ResidualsTableOutOfSample.rds")
+a <- readRDS("ResidualsTableOutOfSampleCheck.rds")
 a[, "Year" := sapply(Year, mapyear, years = a$Year)]
 a[, "Month" := sapply(Month, mapmonth, months = a$Month)]
 mean(a$Errors^2)
@@ -1018,7 +1019,7 @@ dt_averaged_for_graph[, "Month" := as.numeric(Month)]
 dt_averaged_for_graph[, "zoodate" := as.yearmon(paste(Year, Month), "%Y %m")]
 setorderv(dt_averaged_for_graph, c("Year", "Month"))
 Sys.setlocale("LC_ALL","English")
-png("TimeSeriesPrivate.png", width = 700, height = 400)
+png("TimeSeriesPrivateNew.png", width = 700, height = 400)
 ggplot(dt_averaged_for_graph, aes(y=V1, x=zoodate)) + 
   geom_bar(stat = "identity")  + theme_ipsum()+
   ylab("Error") + xlab("Date")
@@ -1686,35 +1687,34 @@ write.xlsx(NAs_shares,"NAs_shares_fda_resids.xlsx")
 #t-tests ####
 
 #Differentials
-Differentials <- readRDS("DifferentialsTable.rds")
+Differentials <- readRDS("DifferentialsTableCheck.rds")
 Differentials
-
+Differentials[, mean(Errors)]
 years_t_tests <- c()
 names(years_t_tests) <- NULL
 for (i in 2015:2020){
   Differentials_T_2015 <- Differentials[Year == i, c("Month", "Errors")]
-  Differentials_T_2015[, "Errors" := -Errors]
   m <- t.test(Differentials_T_2015$Errors, alternative = "greater", mu = 0)
   newnames <- c(names(years_t_tests), as.character(i))
   years_t_tests <- c(years_t_tests, m$p.value)
   names(years_t_tests) <- newnames
 }
 
-write.xlsx(years_t_tests, "ttests_years.xlsx")
+
+write.xlsx(years_t_tests, "ttests_years_new.xlsx")
 months_t_tests <- list()
 
 for (i in 2015:2020){
   this_year_t_tests <- c()
   for (s in 1:12){
   Differentials_T_2015 <- Differentials[(Year == i)&(Month == s), c("Month", "Errors")]
-  Differentials_T_2015[, "Errors" := -Errors]
   m <- t.test(Differentials_T_2015$Errors, alternative = "greater", mu = 0)
   this_year_t_tests <- c(this_year_t_tests, m$p.value)
   }
   months_t_tests[[i-2014]] <- this_year_t_tests
 }
 months_t_tests <- do.call(cbind, months_t_tests)
-write.xlsx(months_t_tests, "ttests_months.xlsx")
+write.xlsx(months_t_tests, "ttests_months_new.xlsx")
 
 Differentials_T <- Differentials[, c("Month", "Errors")]
 Differentials_T[, "Errors" := -Errors]
@@ -1765,7 +1765,7 @@ do.call(cbind,months_p_values)
 write.xlsx(do.call(cbind,months_t_tests), "OptimalMeanValues.xlsx")
 #Residuals
 
-Residuals
+Residuals <- readRDS("ResidualsTableOutOfSampleCheck.rds")
 
 years_t_tests <- c()
 names(years_t_tests) <- NULL
@@ -1778,7 +1778,7 @@ for (i in 2015:2020){
   names(years_t_tests) <- newnames
 }
 
-write.xlsx(years_t_tests, "ttests_years_resids.xlsx")
+write.xlsx(years_t_tests, "ttests_years_resids_new.xlsx")
 months_t_tests <- list()
 
 for (i in 2015:2020){
@@ -1792,7 +1792,7 @@ for (i in 2015:2020){
   months_t_tests[[i-2014]] <- this_year_t_tests
 }
 months_t_tests <- do.call(cbind, months_t_tests)
-write.xlsx(months_t_tests, "ttests_months_resids.xlsx")
+write.xlsx(months_t_tests, "ttests_months_resids_new.xlsx")
 
 Residuals_T <- Residuals[, c("Month", "Errors")]
 Residuals_T[, "Errors" := -Errors]
@@ -1815,7 +1815,7 @@ library(aod)
 library(zoo)
 library(tseries)
 #the variables download
-Differentials <- readRDS("DifferentialsTable.rds")
+Differentials <- readRDS("DifferentialsTableCheck.rds")
 
 Currency <- fread("Currency.csv")
 Oil <- fread("Oil_Prices.csv")
@@ -2544,7 +2544,7 @@ wald.test(b=coef(VFinal$varresult[[3]]), Sigma=vcov(VFinal$varresult[[3]]), Term
 wald.test(b=coef(VFinal$varresult[[3]]), Sigma=vcov(VFinal$varresult[[3]]), Terms=c(1))
 
 #Bankwise Differential ####
-Differentials <- readRDS("DifferentialsTable.rds")
+Differentials <- readRDS("DifferentialsTableCheck.rds")
 AggrBanksTable <- fread("AggregatedBanksTable.csv", colClasses = "numeric")
 AggrBanksTable <- AggrBanksTable[, c("REGN","Year","Month","Equity", "ROE", "InterbankShare", "CorporateShare","GeneralLeverage","SecuritiesLeverage")]
 SampleTable <- CleanData(smpl_dt, "G_spread_interpolated", Average = T, State = T)$Table
@@ -2553,7 +2553,7 @@ BondsChars <- SampleTable[, c("REGN","ISIN", "Year", "Month", "Currency", "Calla
 MergedBanksBondsChars <- merge(BondsChars, AggrBanksTable, by = c("REGN", "Year", "Month"), all.x = T)
 #Create categories table####
 CategoriesTable <- MergedBanksBondsChars[, c("REGN", "Year", "Month", "ISIN")]
-CategoriesTable[, "CurrencyCategory" := ifelse(MergedBanksBondsChars$Currency == "RUB",0,ifelse((MergedBanksBondsChars$Currency == "USD")|(MergedBanksBondsChars$Currency == "EUR"),1,2))]
+#CategoriesTable[, "CurrencyCategory" := ifelse(MergedBanksBondsChars$Currency == "RUB",0,ifelse((MergedBanksBondsChars$Currency == "USD")|(MergedBanksBondsChars$Currency == "EUR"),1,2))]
 CategoriesTable[, "CallabilityCategory" := ifelse(MergedBanksBondsChars$Callable>0.5,1,0)]
 CategoriesTable[, "MaturityCategory" := ifelse(MergedBanksBondsChars$Days_to_maturity <= quantile(MergedBanksBondsChars$Days_to_maturity, probs = c(0.33,0.67))[1],0,ifelse(MergedBanksBondsChars$Days_to_maturity <= quantile(MergedBanksBondsChars$Days_to_maturity, probs = c(0.33,0.67))[2],1,2))]
 CategoriesTable[, "LiquidityCategory" := ifelse(MergedBanksBondsChars$BA_spread <= quantile(MergedBanksBondsChars$BA_spread, probs = c(0.33,0.67))[1],0,ifelse(MergedBanksBondsChars$BA_spread <= quantile(MergedBanksBondsChars$BA_spread, probs = c(0.33,0.67))[2],1,2))]
@@ -2567,29 +2567,35 @@ CategoriesTable[, "SLeverageCategory" := ifelse(MergedBanksBondsChars$Securities
 CategoriesTable[, "REGN" := NULL]
 CategoriesTable <- merge(CategoriesTable, Differentials, by = c("ISIN", "Year", "Month"), all.y = T)
 CategoriesTable[, "Predictions" := NULL]
-CategoriesTable[, "YTMCategory" := ifelse(CategoriesTable$Variable <= quantile(CategoriesTable$Variable, probs = c(0.33,0.67), na.rm=T)[1],0,ifelse(CategoriesTable$Variable <= quantile(CategoriesTable$Variable, probs = c(0.33,0.67), na.rm=T)[2],1,2))]
+#CategoriesTable[, "YTMCategory" := ifelse(CategoriesTable$Variable <= quantile(CategoriesTable$Variable, probs = c(0.33,0.67), na.rm=T)[1],0,ifelse(CategoriesTable$Variable <= quantile(CategoriesTable$Variable, probs = c(0.33,0.67), na.rm=T)[2],1,2))]
 CategoriesTable[, "Variable" := NULL]
 
 CategoriesTable[(SizeCategory == 2)&(InterbankShareCategory == 0)]
 #Create categories graph#####
 library(ggplot2)
 library(tidyr)
-CategoriesTableStrange <- gather(CategoriesTable, key = "Metrics", value = "Group", -c((1:3),15))
+library(hrbrthemes)
+CategoriesTableStrange <- gather(CategoriesTable, key = "Metrics", value = "Group", -c((1:3), 14))
 CategoriesTableStrange <- as.data.table(CategoriesTableStrange)
-CategoriesTableStrange[, "Errors" := -Errors]
 CategoriesTableStrange_mean <- CategoriesTableStrange[, mean(Errors), by = c("Metrics", "Group")]
 CategoriesTableStrange_mean <- CategoriesTableStrange_mean[!is.na(Group)]
-
 png("CategoriesBar.png", width = 700, height = 400)
 ggplot(CategoriesTableStrange_mean, aes(fill=as.factor(Group), y=V1, x=Metrics)) + 
   geom_bar(position="dodge", stat="identity") + theme_ipsum() + ylab("Average Differential") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +scale_fill_discrete(name = "Sector")
+dev.off()
+
+CategoriesTableStrange_number <- CategoriesTableStrange[, .N, by = c("Metrics", "Group")]
+CategoriesTableStrange_number <- CategoriesTableStrange_number[!is.na(Group)]
+png("CategoriesBarNumber.png", width = 700, height = 400)
+ggplot(CategoriesTableStrange_number, aes(fill=as.factor(Group), y=N, x=Metrics)) + 
+  geom_bar(position="dodge", stat="identity") + theme_ipsum() + ylab("Num/ of observations") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +scale_fill_discrete(name = "Sector")
 dev.off()
 
 #regression for differentials#####
 library(AER)
 library(plm)
 library(stargazer)
-
+Differentials[, mean(Errors)]
 MergedTotalTable <- merge(MergedBanksBondsChars, Differentials, by = c("ISIN", "Year", "Month"), all.y = T)
 MergedTotalTable[, "Errors" := -Errors]
 MergedTotalTable[, "Callable" := ifelse(Callable>0.5,1,0)]
@@ -2598,7 +2604,7 @@ MergedTotalTable[is.infinite(ROE), "ROE" :=1]
 MergedTotalTable <- MergedTotalTable[Equity>0]
 MergedTotalTable <- MergedTotalTable[InterbankShare>=0]
 MergedTotalTable <- MergedTotalTable[SecuritiesLeverage>=0]
-fatal_fe_mod <- plm(Errors ~ Currency + Callable + Days_to_maturity +
+fatal_fe_mod <- plm(Errors ~  Callable + Days_to_maturity +
                       BA_spread + Coupon + log(Equity) + ROE + log(InterbankShare) +
                       log(CorporateShare) + log(GeneralLeverage) + log(SecuritiesLeverage), 
                     data = MergedTotalTable,
@@ -2607,8 +2613,8 @@ fatal_fe_mod <- plm(Errors ~ Currency + Callable + Days_to_maturity +
 m <- coeftest(fatal_fe_mod)
 var(MergedTotalTable$Errors)^(1/2)
 as.data.table(m[])
-write.xlsx(as.data.table(m[]), "RegressionCategories.xlsx")
-
+write.xlsx(as.data.table(m[]), "RegressionCategoriesNew.xlsx")
+m$r
 
 MergedTotalTable
 MergedTotalTable_norm <- znorm_table(MergedTotalTable)
@@ -2732,7 +2738,7 @@ summary.plm.full(fatal_fe_mod)
 anova()
 #regression for residuals ####
 #Bankwise Differential ####
-Residuals <- readRDS("ResidualsTableOutOfSample.rds")
+Residuals <- readRDS("ResidualsTableOutOfSampleCheck.rds")
 Residuals[, "Year" := sapply(Year, mapyear, years = Residuals$Year)]
 Residuals[, "Month" := sapply(Month, mapmonth, months = Residuals$Month)]
 AggrBanksTable <- fread("AggregatedBanksTable.csv", colClasses = "numeric")
@@ -2744,7 +2750,7 @@ MergedBanksBondsChars <- merge(BondsChars, AggrBanksTable, by = c("REGN", "Year"
 
 #Create categories table
 CategoriesTable <- MergedBanksBondsChars[, c("REGN", "Year", "Month", "ISIN")]
-CategoriesTable[, "CurrencyCategory" := ifelse(MergedBanksBondsChars$Currency == "RUB",0,ifelse((MergedBanksBondsChars$Currency == "USD")|(MergedBanksBondsChars$Currency == "EUR"),1,2))]
+#CategoriesTable[, "CurrencyCategory" := ifelse(MergedBanksBondsChars$Currency == "RUB",0,ifelse((MergedBanksBondsChars$Currency == "USD")|(MergedBanksBondsChars$Currency == "EUR"),1,2))]
 CategoriesTable[, "CallabilityCategory" := ifelse(MergedBanksBondsChars$Callable>0.5,1,0)]
 CategoriesTable[, "MaturityCategory" := ifelse(MergedBanksBondsChars$Days_to_maturity <= quantile(MergedBanksBondsChars$Days_to_maturity, probs = c(0.33,0.67))[1],0,ifelse(MergedBanksBondsChars$Days_to_maturity <= quantile(MergedBanksBondsChars$Days_to_maturity, probs = c(0.33,0.67))[2],1,2))]
 CategoriesTable[, "LiquidityCategory" := ifelse(MergedBanksBondsChars$BA_spread <= quantile(MergedBanksBondsChars$BA_spread, probs = c(0.33,0.67))[1],0,ifelse(MergedBanksBondsChars$BA_spread <= quantile(MergedBanksBondsChars$BA_spread, probs = c(0.33,0.67))[2],1,2))]
@@ -2758,14 +2764,14 @@ CategoriesTable[, "SLeverageCategory" := ifelse(MergedBanksBondsChars$Securities
 CategoriesTable[, "REGN" := NULL]
 CategoriesTable <- merge(CategoriesTable, Residuals, by = c("ISIN", "Year", "Month"), all.y = T)
 CategoriesTable[, "Predictions" := NULL]
-CategoriesTable[, "YTMCategory" := ifelse(CategoriesTable$Variable <= quantile(CategoriesTable$Variable, probs = c(0.33,0.67), na.rm=T)[1],0,ifelse(CategoriesTable$Variable <= quantile(CategoriesTable$Variable, probs = c(0.33,0.67), na.rm=T)[2],1,2))]
+#CategoriesTable[, "YTMCategory" := ifelse(CategoriesTable$Variable <= quantile(CategoriesTable$Variable, probs = c(0.33,0.67), na.rm=T)[1],0,ifelse(CategoriesTable$Variable <= quantile(CategoriesTable$Variable, probs = c(0.33,0.67), na.rm=T)[2],1,2))]
 CategoriesTable[, "Variable" := NULL]
 
 CategoriesTable[(SizeCategory == 2)&(InterbankShareCategory == 0)]
 library(AER)
 library(plm)
 library(stargazer)
-Residuals <- readRDS("ResidualsTableOutOfSample.rds")
+Residuals <- readRDS("ResidualsTableOutOfSampleCheck.rds")
 
 
 MergedTotalTable <- merge(MergedBanksBondsChars, Residuals, by = c("ISIN", "Year", "Month"), all.y = T)
@@ -2785,7 +2791,7 @@ fatal_fe_mod <- plm(Errors ~ Currency + Callable + Days_to_maturity +
 m <- coeftest(fatal_fe_mod)
 
 as.data.table(m[])
-write.xlsx(as.data.table(m[]), "RegressionCategoriesResiduals.xlsx")
+write.xlsx(as.data.table(m[]), "RegressionCategoriesResidualsNew.xlsx")
 
 MergedTotalTable_norm <- znorm_table(MergedTotalTable)
 fatal_fe_mod_log <- plm(Errors ~Currency + Callable + Days_to_maturity +

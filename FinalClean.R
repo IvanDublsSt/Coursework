@@ -649,7 +649,7 @@ m[, "Errors" := Errors*100]
 m[, "Predictions" := Predictions*100]
 m[, MAE(Predictions, Variable)]
 saveRDS(m, "DifferentialsTableCheck.rds")
-mean(m$Errors)
+m[, mean(Errors)]
 #Загрузка и очистка данных
 library(moments)
 m <- readRDS("DifferentialsTableCheck.rds")
