@@ -694,3 +694,17 @@ m[Year ==2020, lapply(.SD, median)]
 
 m[Year !=2020, lapply(.SD, function(x){sum(x < 0)/sum(x!=10000000)})]
 m[Year ==2020, lapply(.SD, function(x){sum(x < 0)/sum(x!=10000000)})]
+
+
+a <- readRDS("DifferentialsTableCheck.rds")
+m <- readRDS("ResidualsTableOutOfSampleCheck.rds")
+
+
+a[, MAE(Predictions, Variable)]
+m[, MAE(Predictions, Variable)]
+
+a[, mean(abs(Variable-mean(Variable)))]
+m[, mean(abs(Variable-mean(Variable)))]
+
+a[, MAE(Predictions, Variable)/mean(abs(Variable-mean(Variable)))]
+m[, MAE(Predictions, Variable)/mean(abs(Variable-mean(Variable)))]
