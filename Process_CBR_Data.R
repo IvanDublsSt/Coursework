@@ -7,7 +7,7 @@ library(stringr)
 library(xtable)
 library(hrbrthemes)
 
-setwd("C:/Data_coursework")
+setwd("C:/Coursework/Data_coursework")
 Sys.setenv(LANG = "en")
 
 BigBanksTable <- fread("big_spread.csv", colClasses = "numeric")
@@ -2260,4 +2260,111 @@ AggrBanksTable[, "SecuritiesLeverage" := Securities/Liabilities]
 
 
 write.csv(AggrBanksTable, "AggregatedBanksTable.csv")
+
+#create the aggregated table with ratings 
+AggrTable <- read.csv("AggregatedBanksTable.csv")
+library("xlsx")
+
+ListOfBanks <- read.xlsx("List_of_banks_regnums.xlsx",1, encoding = "UTF-8")
+AggrTableWithNames <- merge(AggrTable, ListOfBanks, by.x = "REGN", by.y = "cregnum", all.x=T)
+
+library(XML)
+library(xml2)
+library(stringr)
+RatingTableRawHTML <- read_html("Рейтингуемые лица.html")
+RatingTableRawHTMLTable <- xml_find_all(RatingTableRawHTML, xpath = ".//div[@class = 'search-table__wrapper-main']")
+RatingTableRawTable <- xml_text(RatingTableRawHTMLTable)
+RatingTableRawTable <- str_split(RatingTableRawTable, "\n\t\t\t\t\t\t\t\t\t\t\n                \n              \n            \n              \n                \n\t\t\t\t\t\t\t\t\t\t")
+
+SingleStringProcess <- function(string){
+RatingStringRaw <- string
+RatingStringRaw <- str_replace_all(RatingStringRaw, '\t', "")
+RatingStringRaw <- str_replace_all(RatingStringRaw, '\n', "")
+RatingStringRaw <- str_split(RatingStringRaw, "  ")
+RatingStringRawMask <- str_detect(RatingStringRaw[[1]], ".")
+RatingStringRaw <- RatingStringRaw[[1]][RatingStringRawMask]
+if (!(T %in% str_detect(RatingStringRaw, "Отозван"))){
+RatingStringRawTable <- data.table(name = RatingStringRaw[1], 
+                                   rating = RatingStringRaw[2],
+                                   Status = RatingStringRaw[3])
+}
+else{
+  RatingStringRawTable <- data.table(name = RatingStringRaw[1], 
+                                     rating = "No",
+                                     Status = RatingStringRaw[2])
+}
+return(RatingStringRawTable)}
+RatingTableRawTable <- lapply(RatingTableRawTable[[1]], SingleStringProcess)
+RatingTableRawTable <- do.call(rbind, RatingTableRawTable)
+RatingTableRawTable[, "name":=str_remove(name, "^\\s")]
+RatingTableRawTable[, "name":=str_remove(name, "\\s$")]
+RatingTableRawTable[, "rating":=str_remove(rating, "^\\s")]
+RatingTableRawTable[, "rating":=str_remove(rating, "\\s$")]
+RatingsTable <- copy(RatingTableRawTable)
+write.xlsx(RatingsTable, "RatingsTable.xlsx")
+
+AggrTableWithRating <- merge(AggrTableWithNames, RatingsTable, by.x="csname", by.y="name", all.x=T)
+OrderingMatrix <- data.table(rating = c("AAA(RU)", "AA+(RU)", "AA(RU)", "AA-(RU)", "A+(RU)",
+                                        "A(RU)", 'A-(RU)', 'BBB+(RU)', 'BBB(RU)','BBB-(RU)',
+                                        'BB+(RU)', 'BB(RU)', "BB-(RU)", "B+(RU)", "B(RU)",
+                                        "B-(RU)", "No"), order = c(1:17))
+AggrTableWithRating<-merge(AggrTableWithRating, OrderingMatrix, by = "rating", all.x=T)
+AggrTableWithRating <- as.data.table(AggrTableWithRating)
+AggrTableWithRating[is.na(rating),"order":=18]
+AggrTableWithRating[is.na(rating),"rating":="absent"]
+AggrTableWithRating[rating == "absent","Status":="absent"]
+
+summary(lm(order~Cash_and_equivalents,data= AggrTableWithRating))
+length(AggrTableWithRating[[1]])
+
+TestTrain <- function(dataset){
+  number_of_units <- length(dataset[[1]])
+  train_length <- round(0.8*number_of_units)
+  test_length <- round(0.2*number_of_units)-1
+  sample_numbers <- sample(1:number_of_units, number_of_units)
+  print(sample_numbers)
+  train_sample_numbers <- sample_numbers[1:train_length]
+  test_sample_numbers <- sample_numbers[(train_length+1):number_of_units]
+  print(train_sample_numbers)
+  print(test_sample_numbers)
+  train_sample <- dataset[train_sample_numbers]
+  test_sample <- dataset[test_sample_numbers]
+  return(list(train = train_sample,
+              test = test_sample))
+}
+
+varslist <- colnames(AggrTableWithRating[, -c("rating", "csname", "REGN", "X", "Status", "order", "Year", "Month")])
+
+GenerateFormula <- function(listofvars){
+  paste("order~", paste(listofvars, collapse = " + "))
+}
+
+library(MASS)
+AggrTableWithRating[, "order" := as.factor(order)]
+AggrTableWithRating[, ':='(Ctb_net = Credits_to_banks-Credits_to_banks_minus,
+                           Securities_net = Securities- Securities_minus,
+                           Ctc_net = Corporate_credits - Corporate_credits_minus,
+                           Ctp_net = Retail_credits - Retail_credits_minus,
+                           Reserves_net = Reserves_for_delayed_loans - Reserves_for_delayed_loans_minus,
+                           Mincap_net = Main_capital - Main_capital_minus,
+                           Ctb_pnl_net = Credits_to_banks_pnl - Credits_to_banks_pnl_minus,
+                           Ctp_pnl_net = Retail_credits_pnl-Retail_credits_pnl_minus,
+                           Debt_pnl_net = Debt_pnl - Debt_pnl_minus,
+                           SecuritiesIssued_net = Securities_issued - Securities_issued_minus,
+                           Fee_net = Fee_income - Fee_expenditure + Fee_expenditure_minus,
+                           Rfc = Realized_fc - Realized_fc_pnlold,
+                           Drv_net = Derivatives_etc - Derivatives_etc_minus,
+                           Otherexp_net = Other_expenditures - Other_expenditures_minus,
+                           Otherinc_net = Other_income - Other_income_minus,
+                           Ibt_net = Income_before_taxes - Income_before_taxes_minus,
+                           Ret_net = Retained_earnings - Retained_earnings_minus)]
+
+smpmod <- polr(order~Cash_and_equivalents + Ctb_net + Securities_net + Ctc_net + 
+                 Ctp_net + Reserves_net + Mincap_net + Ctb_pnl_net + Ctp_pnl_net +
+                 Debt_pnl_net + SecuritiesIssued_net + Fee_net + Rfc + Drv_net +
+                 Otherexp_net + Otherinc_net + Ibt_net + Interbank_loans +
+                 Bonds + Equity + NetIncome + ROE + NetInterbank + InterbankShare +
+                 Liabilities + GeneralLeverage + SecuritiesLeverage, data = AggrTableWithRating[(Year>=2016)&(Month>=4)], Hess = T,method=c("logistic"))
+summary(smpmod)
+
 
