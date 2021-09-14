@@ -2261,7 +2261,7 @@ AggrBanksTable[, "SecuritiesLeverage" := Securities/Liabilities]
 
 write.csv(AggrBanksTable, "AggregatedBanksTable.csv")
 
-#create the aggregated table with ratings 
+#create the aggregated table with ratings ####
 AggrTable <- read.csv("AggregatedBanksTable.csv")
 library("xlsx")
 
@@ -2313,20 +2313,19 @@ AggrTableWithRating <- as.data.table(AggrTableWithRating)
 AggrTableWithRating[is.na(rating),"order":=18]
 AggrTableWithRating[is.na(rating),"rating":="absent"]
 AggrTableWithRating[rating == "absent","Status":="absent"]
-
+View(AggrTableWithRating)
 summary(lm(order~Cash_and_equivalents,data= AggrTableWithRating))
 length(AggrTableWithRating[[1]])
+sort(AggrTableWithRating[, order], decreasing = T)
+
 
 TestTrain <- function(dataset){
   number_of_units <- length(dataset[[1]])
   train_length <- round(0.8*number_of_units)
   test_length <- round(0.2*number_of_units)-1
   sample_numbers <- sample(1:number_of_units, number_of_units)
-  print(sample_numbers)
   train_sample_numbers <- sample_numbers[1:train_length]
   test_sample_numbers <- sample_numbers[(train_length+1):number_of_units]
-  print(train_sample_numbers)
-  print(test_sample_numbers)
   train_sample <- dataset[train_sample_numbers]
   test_sample <- dataset[test_sample_numbers]
   return(list(train = train_sample,
@@ -2358,13 +2357,221 @@ AggrTableWithRating[, ':='(Ctb_net = Credits_to_banks-Credits_to_banks_minus,
                            Otherinc_net = Other_income - Other_income_minus,
                            Ibt_net = Income_before_taxes - Income_before_taxes_minus,
                            Ret_net = Retained_earnings - Retained_earnings_minus)]
+AggrTableWithRating[, ':='(TotalAssets = Cash_and_equivalents + NOSTRO - NOSTRO_minus + Ctb_net + Securities_net+
+                             Ctc_net + Ctp_net + Reserves_net + Other_assets-Other_assets_minus)]
+AggrTableWithRating[, ':='(BankCapital = Mincap_net + Ret_net + Retained_earnings_this_year - 
+                             Retained_earnings_this_year_minus + Next_periods - Next_periods_minus)]
+AggrTableWithRating[, ':='(
+                           CS = BankCapital/TotalAssets,
+                           TotalDeposits = LORO + Interbank_loans + Corporate_time_deposits +
+                             Retail_time_deposits,
+                           e_f = (Corporate_time_deposits/BankCapital))]
 
+AggrTableWithRating[, ':='(
+  NonF = (TotalDeposits-Ctb_net)/TotalDeposits,
+  Pl5 = (Ctb_net-Interbank_loans)/TotalDeposits,
+  T_R = (Reserves_for_delayed_loans- Reserves_for_delayed_loans_minus)/BankCapital)]
+length(AggrTableWithRating$csname)
+length(AggrTableWithRating[Status!="absent"]$rating)
+
+
+start <- Sys.time()
 smpmod <- polr(order~Cash_and_equivalents + Ctb_net + Securities_net + Ctc_net + 
-                 Ctp_net + Reserves_net + Mincap_net + Ctb_pnl_net + Ctp_pnl_net +
-                 Debt_pnl_net + SecuritiesIssued_net + Fee_net + Rfc + Drv_net +
-                 Otherexp_net + Otherinc_net + Ibt_net + Interbank_loans +
-                 Bonds + Equity + NetIncome + ROE + NetInterbank + InterbankShare +
-                 Liabilities + GeneralLeverage + SecuritiesLeverage, data = AggrTableWithRating[(Year>=2016)&(Month>=4)], Hess = T,method=c("logistic"))
+                 Ctp_net + Reserves_net, data = AggrTableWithRating[(Year>=2016)&(Month>=4)&(Status!= "absent")], Hess = T,method=c("logistic"), )
+print(Sys.time() - start)
+
+
+myvarsdataframe <- copy(AggrTableWithRating[(Year>=2016)&(Month>=4)&(Status!="absent")])
+myvarsdataframe <- myvarsdataframe[, .(order, Cash_and_equivalents, Ctb_net, Securities_net, Ctc_net, 
+                      Ctp_net, Reserves_net, Mincap_net, Ctb_pnl_net, Ctp_pnl_net,
+                      Debt_pnl_net, SecuritiesIssued_net, Fee_net, Rfc, Drv_net,
+                      Otherexp_net, Otherinc_net, Interbank_loans,
+                      Bonds, Equity, NetIncome, ROE, NetInterbank, InterbankShare,
+                      Liabilities, GeneralLeverage, SecuritiesLeverage, TotalAssets,
+                      BankCapital, CS, TotalDeposits, e_f, T_R)]
+myvarsdataframeorder <- myvarsdataframe$order
+myvarsdataframe <- (as.data.table(myvarsdataframe))[, lapply(.SD, as.numeric), .SDcols = setdiff(colnames(myvarsdataframe), "order")]
+myvarsdataframe[, "order" := myvarsdataframeorder]
+m <- prcomp(na.omit(myvarsdataframe[, -33]), center = T, scale. = T)
+summary(m)
+PC_loadings <- m$rotation
+
+myvarsdataframe_new <- copy(AggrTableWithRating[(Year>=2016)&(Month>=4)&(Status=="absent")])
+myvarsdataframe_new <- myvarsdataframe_new[, .(order, Cash_and_equivalents, Ctb_net, Securities_net, Ctc_net, 
+                                       Ctp_net, Reserves_net, Mincap_net, Ctb_pnl_net, Ctp_pnl_net,
+                                       Debt_pnl_net, SecuritiesIssued_net, Fee_net, Rfc, Drv_net,
+                                       Otherexp_net, Otherinc_net, Interbank_loans,
+                                       Bonds, Equity, NetIncome, ROE, NetInterbank, InterbankShare,
+                                       Liabilities, GeneralLeverage, SecuritiesLeverage, TotalAssets,
+                                       BankCapital, CS, TotalDeposits, e_f, T_R)]
+myvarsdataframeorder <- myvarsdataframe_new$order
+myvarsdataframe_new <- (as.data.table(myvarsdataframe_new))[, lapply(.SD, as.numeric), .SDcols = setdiff(colnames(myvarsdataframe_new), "order")]
+myvarsdataframe_new[, "order" := NULL]
+myvarsdataframe_new <-myvarsdataframe_new[!is.na(ROE)]
+myvarsdataframe_new <-myvarsdataframe_new[!is.infinite(ROE)]
+
+scale(myvarsdataframe_new[, ROE])
+mean(myvarsdataframe_new[, ROE], na.rm = T)
+myvarsdataframe_new[is.infinite(ROE), ROE]
+
+sclddata <- scale(as.matrix(myvarsdataframe_new))
+
+PC_new <- sclddata %*% PC_loadings
+twenty_PC_new <- PC_new[,c(1:20)]
+
+
+PC<-as.data.table(m$x)
+PC[, "order" := na.omit(myvarsdataframe)$order]
+twenty_PC <- PC[,c(1:20, 33)]
+fifteen_PC <- PC[,c(1:15, 33)]
+ten_PC <- PC[,c(1:10, 33)]
+five_PC <- PC[,c(1:5, 33)]
+
+ten_PC[, "order" := as.numeric(order)]
+ten_PC[, "order" := as.factor(order)]
+levels(ten_PC$order)
+ten_PC[, mean(PC1), by = order]
+
+m$r
+for (i in 1:100){
+  try({
+polr(as.factor(order)~., data = ten_PC, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/i))
+print(i)})
+  
+}
+
+for (i in 1:100){
+  try({
+    polr(as.factor(order)~., data = five_PC, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/i))
+    print(i)})
+  
+}
+
+for (i in 1:100){
+  try({
+    polr(as.factor(order)~., data = twenty_PC, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/i))
+    print(i)})
+  
+}
+
+for (i in 1:100){
+  try({
+    polr(as.factor(order)~., data = fifteen_PC, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/i))
+    print(i)})
+  
+}
+start <- Sys.time()
+smpmod <- polr(as.factor(order)~., data = ten_PC, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/22))
+print(Sys.time() - start)
 summary(smpmod)
+
+errors <- c()
+errors_primary_binary <- c()
+errors_plus_binary <- c()
+errors_minus_binary <- c()
+
+for (i in 1:20){
+  tt <- TestTrain(ten_PC)
+  test <- tt$test
+  train <- tt$train
+  model <- polr(as.factor(order)~., data = train, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/22))
+  newerror <- mean(abs(as.numeric(test$order) - as.numeric(predict(model, test[, -"order"]))))
+  errors <- c(errors, newerror)
+  
+  newerror_primary_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"])))
+  newerror_plus_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"]))+1)
+  newerror_minus_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"]))-1)
+  
+  errors_primary_binary <- c(errors_primary_binary, newerror_primary_bin)
+  errors_plus_binary <- c(errors_plus_binary, newerror_plus_bin)
+  errors_minus_binary <- c(errors_minus_binary, newerror_minus_bin)
+}
+mean(errors)
+
+
+errors <- c()
+errors_primary_binary <- c()
+errors_plus_binary <- c()
+errors_minus_binary <- c()
+
+for (i in 1:20){
+  tt <- TestTrain(five_PC)
+  test <- tt$test
+  train <- tt$train
+  model <- polr(as.factor(order)~., data = train, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/18))
+  newerror <- mean(abs(as.numeric(test$order) - as.numeric(predict(model, test[, -"order"]))))
+  errors <- c(errors, newerror)
+  
+  newerror_primary_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"])))
+  newerror_plus_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"]))+1)
+  newerror_minus_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"]))-1)
+  
+  errors_primary_binary <- c(errors_primary_binary, newerror_primary_bin)
+  errors_plus_binary <- c(errors_plus_binary, newerror_plus_bin)
+  errors_minus_binary <- c(errors_minus_binary, newerror_minus_bin)
+}
+
+mean(errors)
+
+errors <- c()
+errors_primary_binary <- c()
+errors_plus_binary <- c()
+errors_minus_binary <- c()
+for (i in 1:20){
+  tt <- TestTrain(twenty_PC)
+  test <- tt$test
+  train <- tt$train
+  model <- polr(as.factor(order)~., data = train, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/33))
+  newerror <- mean(abs(as.numeric(test$order) - as.numeric(predict(model, test[, -"order"]))))
+  errors <- c(errors, newerror)
+  
+  newerror_primary_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"])))/length(as.numeric(test$order))
+  newerror_plus_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"]))+1)/length(as.numeric(test$order))
+  newerror_minus_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"]))-1)/length(as.numeric(test$order))
+  
+  errors_primary_binary <- c(errors_primary_binary, newerror_primary_bin)
+  errors_plus_binary <- c(errors_plus_binary, newerror_plus_bin)
+  errors_minus_binary <- c(errors_minus_binary, newerror_minus_bin)
+}
+
+mean(errors)
+mean(errors_primary_binary)
+mean(errors_plus_binary)
+mean(errors_minus_binary)
+
+
+errors <- c()
+errors_primary_binary <- c()
+errors_plus_binary <- c()
+errors_minus_binary <- c()
+for (i in 1:20){
+  tt <- TestTrain(fifteen_PC)
+  test <- tt$test
+  train <- tt$train
+  model <- polr(as.factor(order)~., data = train, Hess = T,method=c("logistic"), start = seq(from = -0.4, to = 0.4, by = 0.8/28))
+  newerror <- mean(abs(as.numeric(test$order) - as.numeric(predict(model, test[, -"order"]))))
+  errors <- c(errors, newerror)
+  
+  newerror_primary_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"])))/length(as.numeric(test$order))
+  newerror_plus_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"]))+1)/length(as.numeric(test$order))
+  newerror_minus_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"]))-1)/length(as.numeric(test$order))
+  
+  errors_primary_binary <- c(errors_primary_binary, newerror_primary_bin)
+  errors_plus_binary <- c(errors_plus_binary, newerror_plus_bin)
+  errors_minus_binary <- c(errors_minus_binary, newerror_minus_bin)
+}
+
+mean(errors)
+mean(errors_primary_binary)
+mean(errors_plus_binary)
+mean(errors_minus_binary)
+
+best_model <- polr(as.factor(order)~., data = ten_PC, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/22))
+predicted_ratings <- predict(best_model, twenty_PC_new)
+length(predicted_ratings)
+View(predicted_ratings)
+mean(twenty_PC_new[, 1], na.rm = T)
+twenty_PC[order == 1,mean(PC1)]
+twenty_PC[order == 2,mean(PC1)]
 
 
