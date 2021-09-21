@@ -224,7 +224,7 @@ create_bs_table <- function(beginning_year = 2015, save = F){
 create_normatives_table <- function(beginning_year = 2015, oldyear = 2015, oldmonth = 12, save = F){
   norm_list <- list()
   for (i in 1:5){
-    norm_list[[i]] <- do.call(rbind, lapply(c(1,4, 7, 10),month_rotater_normatives, year = i, beginning_year = beginning_year))
+    norm_list[[i]] <- do.call(rbind, lapply(c(1,2,3,4,5,6 ,7,8,9, 10,11,12),month_rotater_normatives, year = i, beginning_year = beginning_year))
   }
   
   norm_table <- do.call(rbind, norm_list)
@@ -247,7 +247,7 @@ m <- create_normatives_table()
 create_normative_supports_table <- function(beginning_year = 2015, oldyear = 2015, oldmonth = 12, save = F){
   norms_list <- list()
   for (i in 1:5){
-    norms_list[[i]] <- do.call(rbind, lapply(c(1,4, 7, 10),month_rotater_normative_supports, year = i, beginning_year = beginning_year))
+    norms_list[[i]] <- do.call(rbind, lapply(c(1,2,3,4,5,6 ,7,8,9, 10,11,12),month_rotater_normative_supports, year = i, beginning_year = beginning_year))
   }
   
   norms_table <- do.call(rbind, norms_list)

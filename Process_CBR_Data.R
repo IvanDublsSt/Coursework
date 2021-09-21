@@ -2313,6 +2313,13 @@ AggrTableWithRating <- as.data.table(AggrTableWithRating)
 AggrTableWithRating[is.na(rating),"order":=18]
 AggrTableWithRating[is.na(rating),"rating":="absent"]
 AggrTableWithRating[rating == "absent","Status":="absent"]
+#add normatives
+Norm_table <- read.csv("normative_spread.csv")
+Norms_table <- read.csv("normative_support_spread.csv")
+AggrTableWithRating <- merge(AggrTableWithRating, Norm_table, all.x = T, by = c("REGN", "Year", "Month"))
+AggrTableWithRating <- merge(AggrTableWithRating, Norms_table, all.x = T, by = c("REGN", "Year", "Month"))
+
+
 View(AggrTableWithRating)
 summary(lm(order~Cash_and_equivalents,data= AggrTableWithRating))
 length(AggrTableWithRating[[1]])
@@ -2382,50 +2389,61 @@ print(Sys.time() - start)
 
 
 myvarsdataframe <- copy(AggrTableWithRating[(Year>=2016)&(Month>=4)&(Status!="absent")])
-myvarsdataframe <- myvarsdataframe[, .(order, Cash_and_equivalents, Ctb_net, Securities_net, Ctc_net, 
+myvarsdataframe <- myvarsdataframe[, .(order, Year, Month, Cash_and_equivalents, Ctb_net, Securities_net, Ctc_net, 
                       Ctp_net, Reserves_net, Mincap_net, Ctb_pnl_net, Ctp_pnl_net,
                       Debt_pnl_net, SecuritiesIssued_net, Fee_net, Rfc, Drv_net,
                       Otherexp_net, Otherinc_net, Interbank_loans,
                       Bonds, Equity, NetIncome, ROE, NetInterbank, InterbankShare,
                       Liabilities, GeneralLeverage, SecuritiesLeverage, TotalAssets,
-                      BankCapital, CS, TotalDeposits, e_f, T_R)]
+                      BankCapital, CS, TotalDeposits, e_f, T_R, N1.0, N1.1, N1.2, N2, N3, N4, Ar1.0, Ar1.1, Ar1.2, Ar3.0, Ar2.0, Ar4.0, Arisk0, Kins, Kras, Kf, PR0, PR1, PR2)]
+myvarsdataframe <- myvarsdataframe[!is.na(Ar1.0)]
 myvarsdataframeorder <- myvarsdataframe$order
-myvarsdataframe <- (as.data.table(myvarsdataframe))[, lapply(.SD, as.numeric), .SDcols = setdiff(colnames(myvarsdataframe), "order")]
+myvarsdataframeyear <- myvarsdataframe$Year
+myvarsdataframemonth <- myvarsdataframe$month
+myvarsdataframe <- (as.data.table(myvarsdataframe))[, lapply(.SD, as.numeric), .SDcols = setdiff(colnames(myvarsdataframe), c("order"))]
 myvarsdataframe[, "order" := myvarsdataframeorder]
-m <- prcomp(na.omit(myvarsdataframe[, -33]), center = T, scale. = T)
+m <- prcomp(na.omit(myvarsdataframe[, -c("order", "Month", "Year")]), center = T, scale. = T)
 summary(m)
 PC_loadings <- m$rotation
 
 myvarsdataframe_new <- copy(AggrTableWithRating[(Year>=2016)&(Month>=4)&(Status=="absent")])
-myvarsdataframe_new <- myvarsdataframe_new[, .(order, Cash_and_equivalents, Ctb_net, Securities_net, Ctc_net, 
-                                       Ctp_net, Reserves_net, Mincap_net, Ctb_pnl_net, Ctp_pnl_net,
-                                       Debt_pnl_net, SecuritiesIssued_net, Fee_net, Rfc, Drv_net,
-                                       Otherexp_net, Otherinc_net, Interbank_loans,
-                                       Bonds, Equity, NetIncome, ROE, NetInterbank, InterbankShare,
-                                       Liabilities, GeneralLeverage, SecuritiesLeverage, TotalAssets,
-                                       BankCapital, CS, TotalDeposits, e_f, T_R)]
+myvarsdataframe_new <- myvarsdataframe_new[, .(order, Year, Month, Cash_and_equivalents, Ctb_net, Securities_net, Ctc_net, 
+                                               Ctp_net, Reserves_net, Mincap_net, Ctb_pnl_net, Ctp_pnl_net,
+                                               Debt_pnl_net, SecuritiesIssued_net, Fee_net, Rfc, Drv_net,
+                                               Otherexp_net, Otherinc_net, Interbank_loans,
+                                               Bonds, Equity, NetIncome, ROE, NetInterbank, InterbankShare,
+                                               Liabilities, GeneralLeverage, SecuritiesLeverage, TotalAssets,
+                                               BankCapital, CS, TotalDeposits, e_f, T_R, N1.0, N1.1, N1.2, N2,
+                                               N3, N4, Ar1.0, Ar1.1, Ar1.2, Ar3.0, Ar2.0, Ar4.0, Arisk0, Kins, Kras, Kf, PR0, PR1, PR2)]
 myvarsdataframeorder <- myvarsdataframe_new$order
 myvarsdataframe_new <- (as.data.table(myvarsdataframe_new))[, lapply(.SD, as.numeric), .SDcols = setdiff(colnames(myvarsdataframe_new), "order")]
 myvarsdataframe_new[, "order" := NULL]
 myvarsdataframe_new <-myvarsdataframe_new[!is.na(ROE)]
 myvarsdataframe_new <-myvarsdataframe_new[!is.infinite(ROE)]
+myvarsdataframe_new <- myvarsdataframe_new[!is.na(Ar1.0)]
 
 scale(myvarsdataframe_new[, ROE])
 mean(myvarsdataframe_new[, ROE], na.rm = T)
 myvarsdataframe_new[is.infinite(ROE), ROE]
 
-sclddata <- scale(as.matrix(myvarsdataframe_new))
+sclddata <- scale(as.matrix(myvarsdataframe_new[, -c("Year", "Month")]))
 
 PC_new <- sclddata %*% PC_loadings
-twenty_PC_new <- PC_new[,c(1:20)]
+PC_new <- as.data.table(PC_new)
+PC_new[, ":="(Year = myvarsdataframe_new$Year,
+              Month = myvarsdataframe_new$Month)]
+
+twenty_PC_new <- PC_new[,c(1:20,52,53)]
 
 
 PC<-as.data.table(m$x)
 PC[, "order" := na.omit(myvarsdataframe)$order]
-twenty_PC <- PC[,c(1:20, 33)]
-fifteen_PC <- PC[,c(1:15, 33)]
-ten_PC <- PC[,c(1:10, 33)]
-five_PC <- PC[,c(1:5, 33)]
+PC[, "Year" := myvarsdataframe$Year]
+PC[, "Month" := myvarsdataframe$Month]
+twenty_PC <- PC[,c(1:20, 52,53,54)]
+fifteen_PC <- PC[,c(1:15, 52,53,54)]
+ten_PC <- PC[,c(1:10, 52,53,54)]
+five_PC <- PC[,c(1:5, 52,53,54)]
 
 ten_PC[, "order" := as.numeric(order)]
 ten_PC[, "order" := as.factor(order)]
@@ -2435,7 +2453,7 @@ ten_PC[, mean(PC1), by = order]
 m$r
 for (i in 1:100){
   try({
-polr(as.factor(order)~., data = ten_PC, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/i))
+polr(as.factor(order)~., data = ten_PC[, -c("Month")], Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/i))
 print(i)})
   
 }
