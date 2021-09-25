@@ -2366,14 +2366,14 @@ AggrTableWithRating <- as.data.table(AggrTableWithRating)
 AggrTableWithRating[is.na(rating),"order":=18]
 AggrTableWithRating[is.na(rating),"rating":="absent"]
 AggrTableWithRating[rating == "absent","Status":="absent"]
-View(AggrTableWithRating[,c("rating", "order")])
+View(AggrTableWithRating)
 
 #add normatives
 Norm_table <- read.csv("normative_spread.csv")
 Norms_table <- read.csv("normative_support_spread.csv")
 AggrTableWithRating <- merge(AggrTableWithRating, Norm_table, all.x = T, by = c("REGN", "Year", "Month"))
 AggrTableWithRating <- merge(AggrTableWithRating, Norms_table, all.x = T, by = c("REGN", "Year", "Month"))
-
+write.csv("BanksTableWithNormatives.csv", AggrTableWithRating)
 
 View(AggrTableWithRating)
 summary(lm(order~Cash_and_equivalents,data= AggrTableWithRating))
