@@ -2266,7 +2266,9 @@ AggrTable <- read.csv("AggregatedBanksTable.csv")
 library("xlsx")
 
 ListOfBanks <- read.xlsx("List_of_banks_regnums.xlsx",1, encoding = "UTF-8")
+ListOfBanks[ListOfBanks$cregnum == 23]
 AggrTableWithNames <- merge(AggrTable, ListOfBanks, by.x = "REGN", by.y = "cregnum", all.x=T)
+AggrTableWithNames <- AggrTableWithNames[!is.na(AggrTableWithNames$csname),]
 
 library(XML)
 library(xml2)
@@ -2275,7 +2277,7 @@ RatingTableRawHTML <- read_html("Рейтингуемые лица.html")
 RatingTableRawHTMLTable <- xml_find_all(RatingTableRawHTML, xpath = ".//div[@class = 'search-table__wrapper-main']")
 RatingTableRawTable <- xml_text(RatingTableRawHTMLTable)
 RatingTableRawTable <- str_split(RatingTableRawTable, "\n\t\t\t\t\t\t\t\t\t\t\n                \n              \n            \n              \n                \n\t\t\t\t\t\t\t\t\t\t")
-
+View(RatingTableRawTable[[1]])
 SingleStringProcess <- function(string){
 RatingStringRaw <- string
 RatingStringRaw <- str_replace_all(RatingStringRaw, '\t', "")
@@ -2298,12 +2300,63 @@ RatingTableRawTable <- lapply(RatingTableRawTable[[1]], SingleStringProcess)
 RatingTableRawTable <- do.call(rbind, RatingTableRawTable)
 RatingTableRawTable[, "name":=str_remove(name, "^\\s")]
 RatingTableRawTable[, "name":=str_remove(name, "\\s$")]
+RatingTableRawTable[, "name":=str_remove(name, '"+')]
+RatingTableRawTable[, "name":=str_remove(name, "'+")]
+RatingTableRawTable[, "name":=str_remove(name, '«+')]
+RatingTableRawTable[, "name":=str_remove(name, '»+')]
+RatingTableRawTable[, "name":=str_remove(name, '"+')]
+RatingTableRawTable[, "name":=str_remove(name, "'+")]
+RatingTableRawTable[, "name":=str_remove(name, '«+')]
+RatingTableRawTable[, "name":=str_remove(name, '»+')]
+RatingTableRawTable[, "name":=str_remove(name, '"+')]
+RatingTableRawTable[, "name":=str_remove(name, "'+")]
+RatingTableRawTable[, "name":=str_remove(name, '«+')]
+RatingTableRawTable[, "name":=str_remove(name, '»+')]
+RatingTableRawTable[, "name":= tolower(name)]
+RatingTableRawTable[name == "ао натиксис банк", "name":= "натиксис банк ао"]
+RatingTableRawTable[name == "ао банк реалист", "name":= "ао реалист банк"]
+RatingTableRawTable[name == "ао экспобанк", "name":= "ооо экспобанк"]
 RatingTableRawTable[, "rating":=str_remove(rating, "^\\s")]
 RatingTableRawTable[, "rating":=str_remove(rating, "\\s$")]
 RatingsTable <- copy(RatingTableRawTable)
-write.xlsx(RatingsTable, "RatingsTable.xlsx")
+# write.xlsx(RatingsTable, "RatingsTable.xlsx")
 
+
+RatingTableRawTable[name == "АО ЮниКредит Банк"]
+View(RatingTableRawTable$name)
+View(AggrTableWithRating$csname)
+unique(RatingTableRawTable$name)
+unique(AggrTableWithRating$csname)
+intersect(RatingTableRawTable$name, AggrTableWithRating$csname)
+setdiff(RatingTableRawTable$name, AggrTableWithRating$csname)
+
+AggrTableWithRating[csname == "ПАО Сбербанк", c("rating")]
+AggrTableWithRating[rating != "absent", .N]
+AggrTableWithRating[csname == "банк втб (пао)", .N]
+
+# View(unique(AggrTableWithRating[rating != "absent", c("csname")]))
+
+AggrTableWithNames <- as.data.table(AggrTableWithNames)
+AggrTableWithNames[, "csname":=str_remove(csname, "^\\s")]
+AggrTableWithNames[, "csname":=str_remove(csname, "\\s$")]
+AggrTableWithNames[, "csname":=str_remove(csname, '"+')]
+AggrTableWithNames[, "csname":=str_remove(csname, "'+")]
+AggrTableWithNames[, "csname":=str_remove(csname, '«+')]
+AggrTableWithNames[, "csname":=str_remove(csname, '»+')]
+AggrTableWithNames[, "csname":=str_remove(csname, '"+')]
+AggrTableWithNames[, "csname":=str_remove(csname, "'+")]
+AggrTableWithNames[, "csname":=str_remove(csname, '«+')]
+AggrTableWithNames[, "csname":=str_remove(csname, '»+')]
+AggrTableWithNames[, "csname":=str_remove(csname, '"+')]
+AggrTableWithNames[, "csname":=str_remove(csname, "'+")]
+AggrTableWithNames[, "csname":=str_remove(csname, '«+')]
+AggrTableWithNames[, "csname":=str_remove(csname, '»+')]
+AggrTableWithNames[, "csname":= tolower(csname)]
+AggrTableWithNames[is.na(csname)]
 AggrTableWithRating <- merge(AggrTableWithNames, RatingsTable, by.x="csname", by.y="name", all.x=T)
+
+AggrTableWithRating <- as.data.table(AggrTableWithRating)
+AggrTableWithRating[csname =="банк втб (пао)", "rating":="AAA(RU)"]
 OrderingMatrix <- data.table(rating = c("AAA(RU)", "AA+(RU)", "AA(RU)", "AA-(RU)", "A+(RU)",
                                         "A(RU)", 'A-(RU)', 'BBB+(RU)', 'BBB(RU)','BBB-(RU)',
                                         'BB+(RU)', 'BB(RU)', "BB-(RU)", "B+(RU)", "B(RU)",
@@ -2313,6 +2366,8 @@ AggrTableWithRating <- as.data.table(AggrTableWithRating)
 AggrTableWithRating[is.na(rating),"order":=18]
 AggrTableWithRating[is.na(rating),"rating":="absent"]
 AggrTableWithRating[rating == "absent","Status":="absent"]
+View(AggrTableWithRating[,c("rating", "order")])
+
 #add normatives
 Norm_table <- read.csv("normative_spread.csv")
 Norms_table <- read.csv("normative_support_spread.csv")
@@ -2381,13 +2436,17 @@ AggrTableWithRating[, ':='(
 length(AggrTableWithRating$csname)
 length(AggrTableWithRating[Status!="absent"]$rating)
 
-
+library("rms")
+mysmalltable <- AggrTableWithRating[(Year>=2016)&(Month>=4)&(Status!= "absent")]
+mysmalltable[, "order" := droplevels(order)]
 start <- Sys.time()
-smpmod <- polr(order~Cash_and_equivalents + Ctb_net + Securities_net + Ctc_net + 
-                 Ctp_net + Reserves_net, data = AggrTableWithRating[(Year>=2016)&(Month>=4)&(Status!= "absent")], Hess = T,method=c("logistic"), )
+smpmod <- orm(order~Cash_and_equivalents + Ctb_net + Securities_net + Ctc_net + 
+                 Ctp_net, data = mysmalltable, method= "orm.fit")
+smpmod
 print(Sys.time() - start)
+AggrTableWithRating[(Status!="absent"), .N, by = order]
 
-
+source(orm)
 myvarsdataframe <- copy(AggrTableWithRating[(Year>=2016)&(Month>=4)&(Status!="absent")])
 myvarsdataframe <- myvarsdataframe[, .(order, Year, Month, Cash_and_equivalents, Ctb_net, Securities_net, Ctc_net, 
                       Ctp_net, Reserves_net, Mincap_net, Ctb_pnl_net, Ctp_pnl_net,
@@ -2443,31 +2502,151 @@ PC[, "Month" := myvarsdataframe$Month]
 twenty_PC <- PC[,c(1:20, 52,53,54)]
 fifteen_PC <- PC[,c(1:15, 52,53,54)]
 ten_PC <- PC[,c(1:10, 52,53,54)]
-five_PC <- PC[,c(1:5, 52,53,54)]
+i<-c("PC1", "Month")
+m <- 5
+i <- c(paste("PC", 1:m, sep = ""), "order", "Year", "Month")
+five_PC <- PC[,i, with = F]
 
-ten_PC[, "order" := as.numeric(order)]
-ten_PC[, "order" := as.factor(order)]
+ten_PC[, "order" := droplevels(order)]
 levels(ten_PC$order)
 ten_PC[, mean(PC1), by = order]
 
+VarList <- quote(list(order, Year, Month, Cash_and_equivalents, Ctb_net, Securities_net, Ctc_net, 
+                      Ctp_net, Reserves_net, Mincap_net, Ctb_pnl_net, Ctp_pnl_net,
+                      Debt_pnl_net, SecuritiesIssued_net, Fee_net, Rfc, Drv_net,
+                      Otherexp_net, Otherinc_net, Interbank_loans,
+                      Bonds, Equity, NetIncome, ROE, NetInterbank, InterbankShare,
+                      Liabilities, GeneralLeverage, SecuritiesLeverage, TotalAssets,
+                      BankCapital, CS, TotalDeposits, e_f, T_R, N1.0, N1.1, N1.2, N2, N3,
+                      N4, Ar1.0, Ar1.1, Ar1.2, Ar3.0, Ar2.0, Ar4.0, Arisk0, Kins, Kras, Kf, PR0, PR1, PR2))
+NAVarList <- quote(Ar1.0)
+
+GeneratePCTable <- function(BanksWithRatingsTable_Train, CreatePredictionSet = F, BanksWithRatingsTable_Predict = NULL, ListOfVariables = VarList){
+  
+  myvarsdataframe <- copy(BanksWithRatingsTable_Train)
+  
+  #select needed variables
+  myvarsdataframe <- myvarsdataframe[, eval(ListOfVariables)]
+  
+  #remove NAs from selected columns; unfortunately, there is no algorithm implemented yet which would select these columns automatically
+  myvarsdataframe <- myvarsdataframe[!is.na(Ar1.0)]
+  
+  #separate non-numeric columns
+  myvarsdataframeorder <- myvarsdataframe$order
+  myvarsdataframeyear <- myvarsdataframe$Year
+  myvarsdataframemonth <- myvarsdataframe$month
+  
+  #convert to numeric all the columns, except for the dependent variable and date
+  myvarsdataframe <- (as.data.table(myvarsdataframe))[, lapply(.SD, as.numeric), .SDcols = setdiff(colnames(myvarsdataframe), c("order", "Year", "Month"))]
+  myvarsdataframe[, ':=' ("order" = myvarsdataframeorder,
+                          "Year" = myvarsdataframeyear,
+                          "Month" = myvarsdataframemonth)]
+  
+  #get a table of principal components for the train set
+  PCTable <- prcomp(na.omit(myvarsdataframe[, -c("order", "Month", "Year")]), center = T, scale. = T)
+  
+  #the following part will be run if you choose to generate also the PC set, for which predictions are expected
+  #which is generated by applying the factor loadings obtained for the training set to the values in the new one
+  if (CreatePredictionSet == T){
+  #get PC loadings, which were generated for the training set
+  PC_loadings <- PCTable$rotation
+  
+  #repeat the procedure of data preparation for prediction set 
+  myvarsdataframe_new <- copy(BanksWithRatingsTable_Predict)
+  myvarsdataframe_new <- myvarsdataframe_new[, eval(ListOfVariables)]
+  myvarsdataframe_new_order <- myvarsdataframe_new$order
+  myvarsdataframe_new_year <- myvarsdataframe$Year
+  myvarsdataframe_new_month <- myvarsdataframe$month
+  myvarsdataframe_new <- (as.data.table(myvarsdataframe_new))[, lapply(.SD, as.numeric), .SDcols = setdiff(colnames(myvarsdataframe_new), c("order", "Year", "Month"))]
+
+  #these removals are again rather empirical, unfortunately
+  myvarsdataframe_new <-myvarsdataframe_new[!is.na(ROE)]
+  myvarsdataframe_new <-myvarsdataframe_new[!is.infinite(ROE)]
+  myvarsdataframe_new <- myvarsdataframe_new[!is.na(Ar1.0)]
+  
+  #remove the dependent variable, year and month from dataset
+  myvarsdataframe_new[, ':=' ("order" = NULL,
+                              "Year" = NULL,
+                              "Month" = NULL)]
+  
+  #scale the data
+  sclddata <- scale(as.matrix(myvarsdataframe_new[, -c("Year", "Month")]))
+  
+  #create the new PC table
+  PC_new <- sclddata %*% PC_loadings
+  PC_new <- as.data.table(PC_new)
+  PC_new[, ":="(Year = myvarsdataframe_new$Year,
+                Month = myvarsdataframe_new$Month)]
+  
+  #return the results
+  return(list("PCTable" = PCTable, "PCTablePredict" = PC_new, "orderPredict" = myvarsdataframe_new_order))
+  }
+  else {
+    return(list("PCTable" = PCTable, "PCTablePredict" = NULL, "orderPredict" = NULL))
+    }
+}
+
+library(plyr)
+GenerateRestrictedPCTable <- function(PCTable, PCNumber, order = T, Year = T, Month = T){
+
+  #generate a list of names of principal components columns to be taken, then add
+  #(or not add) dependent variable, month and year to this list
+  #depending on the user choice
+  ColumnNames <- paste("PC", 1:PCNumber, sep = "")
+  if (order==T){
+    ColumnNames <- c(ColumnNames, "order")
+  }
+  if (Year==T){
+    ColumnNames <- c(ColumnNames, "Year")
+  }
+  if (Month==T){
+    ColumnNames <- c(ColumnNames, "Month")
+  }
+  ColumnNames <- lapply(ColumnNames,  sym)
+  ColumnNames <- quote(list(csname, Year))
+  #restrict the PC table to the columns enlisted in the previous step
+  five_PC <- PCTable[,ColumnNames, with = F]
+  return(five_PC)
+}
+parse(text = r)
+!!c("a")
+sym(c("a"))
+typeof(parse(text = "a"))
+i <- quote(list('a', 'b'))
+r <- c('c', 'd')
+parse(i,r)
+
+substitute(m, list(m = m))
+
+m <- lapply(c("csname", "Year"),  sym)
+m <- substitute(list(m), list(m=syms(c("csname", "Year"))))
+
+AggrTableWithNames[, eval(m)]
+
+#m <- GeneratePCTable(AggrTableWithRating[(Year>=2016)&(Month>=4)&(Status!="absent")])
+n <- GenerateRestrictedPCTable(m$PCTable, 5) 
+
+print(as.quoted("l"))
+library(rlang)
+Quotation()
 m$r
 for (i in 1:100){
   try({
-polr(as.factor(order)~., data = ten_PC[, -c("Month")], Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/i))
+polr(as.factor(order)~., data = ten_PC[, -c("Year")], Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/i))
 print(i)})
   
 }
 
 for (i in 1:100){
   try({
-    polr(as.factor(order)~., data = five_PC, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/i))
+    polr(as.factor(order)~., data = five_PC[, -c("Year")], Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/i))
     print(i)})
   
 }
 
 for (i in 1:100){
   try({
-    polr(as.factor(order)~., data = twenty_PC, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/i))
+    polr(as.factor(order)~., data = twenty_PC[, -c("Month")], Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/i))
     print(i)})
   
 }
@@ -2479,7 +2658,7 @@ for (i in 1:100){
   
 }
 start <- Sys.time()
-smpmod <- polr(as.factor(order)~., data = ten_PC, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/22))
+smpmod <- polr(as.factor(order)~., data = ten_PC[, -c("Year")], Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/26))
 print(Sys.time() - start)
 summary(smpmod)
 
@@ -2489,7 +2668,31 @@ errors_plus_binary <- c()
 errors_minus_binary <- c()
 
 for (i in 1:20){
-  tt <- TestTrain(ten_PC)
+  tt <- TestTrain(ten_PC[, -c("Year")])
+  test <- tt$test
+  train <- tt$train
+  model <- polr(as.factor(order)~., data = train, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/26))
+  newerror <- mean(abs(as.numeric(test$order) - as.numeric(predict(model, test[, -"order"]))))
+  errors <- c(errors, newerror)
+  
+  newerror_primary_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"])))
+  newerror_plus_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"]))+1)
+  newerror_minus_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"]))-1)
+  
+  errors_primary_binary <- c(errors_primary_binary, newerror_primary_bin)
+  errors_plus_binary <- c(errors_plus_binary, newerror_plus_bin)
+  errors_minus_binary <- c(errors_minus_binary, newerror_minus_bin)
+}
+mean(errors)
+
+
+errors <- c()
+errors_primary_binary <- c()
+errors_plus_binary <- c()
+errors_minus_binary <- c()
+
+for (i in 1:20){
+  tt <- TestTrain(five_PC[, -c("Year")])
   test <- tt$test
   train <- tt$train
   model <- polr(as.factor(order)~., data = train, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/22))
@@ -2504,30 +2707,6 @@ for (i in 1:20){
   errors_plus_binary <- c(errors_plus_binary, newerror_plus_bin)
   errors_minus_binary <- c(errors_minus_binary, newerror_minus_bin)
 }
-mean(errors)
-
-
-errors <- c()
-errors_primary_binary <- c()
-errors_plus_binary <- c()
-errors_minus_binary <- c()
-
-for (i in 1:20){
-  tt <- TestTrain(five_PC)
-  test <- tt$test
-  train <- tt$train
-  model <- polr(as.factor(order)~., data = train, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/18))
-  newerror <- mean(abs(as.numeric(test$order) - as.numeric(predict(model, test[, -"order"]))))
-  errors <- c(errors, newerror)
-  
-  newerror_primary_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"])))
-  newerror_plus_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"]))+1)
-  newerror_minus_bin <- sum(as.numeric(test$order) == as.numeric(predict(model, test[, -"order"]))-1)
-  
-  errors_primary_binary <- c(errors_primary_binary, newerror_primary_bin)
-  errors_plus_binary <- c(errors_plus_binary, newerror_plus_bin)
-  errors_minus_binary <- c(errors_minus_binary, newerror_minus_bin)
-}
 
 mean(errors)
 
@@ -2536,10 +2715,10 @@ errors_primary_binary <- c()
 errors_plus_binary <- c()
 errors_minus_binary <- c()
 for (i in 1:20){
-  tt <- TestTrain(twenty_PC)
+  tt <- TestTrain(twenty_PC[, -c("Month")])
   test <- tt$test
   train <- tt$train
-  model <- polr(as.factor(order)~., data = train, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/33))
+  model <- polr(as.factor(order)~., data = train, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/37))
   newerror <- mean(abs(as.numeric(test$order) - as.numeric(predict(model, test[, -"order"]))))
   errors <- c(errors, newerror)
   
@@ -2584,12 +2763,14 @@ mean(errors_primary_binary)
 mean(errors_plus_binary)
 mean(errors_minus_binary)
 
-best_model <- polr(as.factor(order)~., data = ten_PC, Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/22))
+best_model <- polr(as.factor(order)~., data = ten_PC[,-c("Month")], Hess = T,method=c("logistic"), start = seq(from = -0.1, to = 0.1, by = 0.2/23))
 predicted_ratings <- predict(best_model, twenty_PC_new)
 length(predicted_ratings)
 View(predicted_ratings)
+data.table("a" = predicted_ratings)[, .N, by = a]
 mean(twenty_PC_new[, 1], na.rm = T)
 twenty_PC[order == 1,mean(PC1)]
 twenty_PC[order == 2,mean(PC1)]
-
+AggrTableWithRating[order == 17, c("order", "rating")]
+AggrTableWithRating[(order != 17)&(csname == "АО ЮниКредит Банк"), c("order", "rating")]
 
