@@ -1,9 +1,7 @@
 library(data.table)
 library(MASS)
-library(rms)
-library(plyr)
-library(rlang)
 
+#please, give a path to the folder where data is stored
 setwd("C:/Coursework/Data_coursework")
 Sys.setenv(LANG = "en")
 
