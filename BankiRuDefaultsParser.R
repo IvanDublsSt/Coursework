@@ -48,7 +48,7 @@ AllPagesProcessing <- function(SavingRequired = F, SavingPath = NULL){
     }
   }
   AllPagesItems <- do.call(rbind, AllPagesItems)
-  AllPagesItems["DefaultIndex" == "BankLocalization", "BankLocalization" := "Unknown"]
+  AllPagesItems[BankDefaultIndex == BankLocalization, "BankLocalization" := "Unknown"]
   
   if (SavingRequired == T){
     write.xlsx(AllPagesItems, SavingPath)
