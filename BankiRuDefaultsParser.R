@@ -1,7 +1,7 @@
 library(data.table)
 library(xml2)
 library(stringr)
-
+library(xlsx)
 setwd("C:/Users/Fride/OneDrive/Документы/GitHub/Coursework")
 
 GetNumberOfPages <- function(URL){
@@ -37,19 +37,23 @@ OneItemProcessing <- function(Item){
   return(OnePageOneItemText)
 }
 
-
-AllPagesItems <- list()
-for (i in 1:GetNumberOfPages("https://www.banki.ru/banks/memory/?PAGEN_1=1")){
-  OnePageURL <- paste("https://www.banki.ru/banks/memory/?PAGEN_1=", as.character(i), sep = "")
-  AllPagesItems[[i]] <- OnePageProcessing(OnePageURL)
-  
-  if (i %% 10 == 0){
-    print(paste("Processed page #", as.character(i), sep = ""))
+AllPagesProcessing <- function(SavingRequired = F, SavingPath = NULL){
+  AllPagesItems <- list()
+  for (i in 1:GetNumberOfPages("https://www.banki.ru/banks/memory/?PAGEN_1=1")){
+    OnePageURL <- paste("https://www.banki.ru/banks/memory/?PAGEN_1=", as.character(i), sep = "")
+    AllPagesItems[[i]] <- OnePageProcessing(OnePageURL)
+    
+    if (i %% 10 == 0){
+      print(paste("Processed page #", as.character(i), sep = ""))
+    }
   }
+  AllPagesItems <- do.call(rbind, AllPagesItems)
+  AllPagesItems["DefaultIndex" == "BankLocalization", "BankLocalization" := "Unknown"]
+  
+  if (SavingRequired == T){
+    write.xlsx(AllPagesItems, SavingPath)
+  }
+  return(AllPagesItems)
 }
-AllPagesItems <- do.call(rbind, AllPagesItems)
-AllPagesItems["DefaultIndex" == "BankLocalization", "BankLocalization" := "Unknown"]
 
-if (SavingRequired == T){
-  write.x
-}
+AllPages <- AllPagesProcessing(SavingRequired = T, SavingPath = "Data/BankDefaults.xlsx")
