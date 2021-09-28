@@ -4,15 +4,18 @@ library(stringr)
 
 setwd("C:/Users/Fride/OneDrive/Документы/GitHub/Coursework")
 
-GetNumberOfPages
-OnePageHTML <- read_html("https://www.banki.ru/banks/memory/?PAGEN_1=1")
-OnePageHeader <- xml_find_all(OnePageHTML, ".//div[@class = 'margin-bottom-default']")[[1]]
-OnePageNumbersAttribute <- xml_attr(OnePageHeader, "data-options")
-OnePageNumbersAttributeSplit <- str_split(OnePageNumbersAttribute, "\n")[[1]]
-OnePageItemsPerPage <- OnePageNumbersAttributeSplit[str_detect(OnePageNumbersAttributeSplit, "itemsPerPage")]
-OnePageItemsPerPage <- as.numeric(str_extract(OnePageItemsPerPage, "\\d+"))
-OnePageTotalItems <- OnePageNumbersAttributeSplit[str_detect(OnePageNumbersAttributeSplit, "itemsPerPage")]
-OnePageTotalItems <- as.numeric(str_extract(OnePageTotalItems, "\\d+"))
+GetNumberOfPages <- function(URL){
+  OnePageHTML <- read_html("https://www.banki.ru/banks/memory/?PAGEN_1=1")
+  Header <- xml_find_all(OnePageHTML, ".//div[@class = 'margin-bottom-default']")[[1]]
+  NumbersAttribute <- xml_attr(Header, "data-options")
+  NumbersAttributeSplit <- str_split(NumbersAttribute, "\n")[[1]]
+  ItemsPerPage <- NumbersAttributeSplit[str_detect(NumbersAttributeSplit, "itemsPerPage")]
+  ItemsPerPage <- as.numeric(str_extract(ItemsPerPage, "\\d+"))
+  TotalItems <- NumbersAttributeSplit[str_detect(NumbersAttributeSplit, "totalItems")]
+  TotalItems <- as.numeric(str_extract(TotalItems, "\\d+"))
+  NumberOfPages <- round(TotalItems/ItemsPerPage)
+  return(NumberOfPages)
+}
 
 OnePageProcessing <- function(URL){
   OnePageHTML <- read_html(URL)
@@ -32,4 +35,21 @@ OneItemProcessing <- function(Item){
   OnePageOneItemText <- unlist(OnePageOneItemText)
   OnePageOneItemText <- OnePageOneItemText[OnePageOneItemText != ""]
   return(OnePageOneItemText)
+}
+
+
+AllPagesItems <- list()
+for (i in 1:GetNumberOfPages("https://www.banki.ru/banks/memory/?PAGEN_1=1")){
+  OnePageURL <- paste("https://www.banki.ru/banks/memory/?PAGEN_1=", as.character(i), sep = "")
+  AllPagesItems[[i]] <- OnePageProcessing(OnePageURL)
+  
+  if (i %% 10 == 0){
+    print(paste("Processed page #", as.character(i), sep = ""))
+  }
+}
+AllPagesItems <- do.call(rbind, AllPagesItems)
+AllPagesItems["DefaultIndex" == "BankLocalization", "BankLocalization" := "Unknown"]
+
+if (SavingRequired == T){
+  write.x
 }
