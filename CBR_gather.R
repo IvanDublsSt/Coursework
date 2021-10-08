@@ -9,7 +9,7 @@ Sys.setenv(LANG = "en")
 #Для работы нужно создать папку Data и разархивировать туда в отдельные папки все файлы,
 #которые пользователь желает сложить в таблицу. 
 #!!!!!!!!Путь к рабочей директории нужно указать здесь: 
-setwd("C:/Coursework")
+setwd("C:/Personal/VariousData/CBRData")
 #Затем создать все функции ниже (до раздела "воспроизвести функции").
 #Чтобы получить готовые таблицы, нужно применить одну из двух функций: create_bs_table (для формы 101) или create_pnl_table (для формы 102)
 #Каждая из функций возвращает сведенную таблицу с итоговыми значениями каждой из строк, а также с несколькими техническими переменными (доля отсутствующих значений и т.д.)
@@ -147,7 +147,7 @@ month_rotater_normative_supports <- function(month, year, beginning_year = 2015)
       return(NULL)
   })}
 m <- month_rotater_normative_supports(10,1)
-
+m
 #f5####
 month_rotater_normatives <- function(month, year, beginning_year = 2015){
   nextmonth <- month+1
@@ -187,7 +187,7 @@ month_rotater_normatives <- function(month, year, beginning_year = 2015){
       print(paste("Error text:", cond, sep = ""))
       return(NULL)
     })}
-m <- month_rotater_normatives(1,5)
+#m <- month_rotater_normatives(1,5)
 m
 
 #f6####
@@ -238,10 +238,10 @@ create_normatives_table <- function(beginning_year = 2015, oldyear = 2015, oldmo
   spread_norm_table_df <- as.data.frame(spread_norm_table)
   spread_norm_table_df[is.na(spread_norm_table_df)] <- 0
   spread_norm_table <- spread_norm_table_df
-  if (save == T){write.csv(spread_norm_table, file = "C:/Coursework/Data_coursework/normative_spread.csv")}
+  if (save == T){write.csv(spread_norm_table, file = "normative_spread.csv")}
   return(spread_norm_table)
 }
-m <- create_normatives_table()
+#m <- create_normatives_table()
 
 #f8####
 create_normative_supports_table <- function(beginning_year = 2015, oldyear = 2015, oldmonth = 12, save = F){
@@ -261,10 +261,10 @@ create_normative_supports_table <- function(beginning_year = 2015, oldyear = 201
   spread_norms_table_df <- as.data.frame(spread_norms_table)
   spread_norms_table_df[is.na(spread_norms_table_df)] <- 0
   spread_norms_table <- spread_norms_table_df
-  if (save == T){write.csv(spread_norms_table, file = "C:/Coursework/Data_coursework/normative_support_spread.csv")}
+  if (save == T){write.csv(spread_norms_table, file = "normative_support_spread.csv")}
   return(spread_norms_table)
 }
-m <- create_normative_supports_table()
+#m <- create_normative_supports_table()
 
 #f9####
 create_pnl_table <- function(beginning_year = 2015, oldyear = 2015, oldmonth = 12, save = F){pnl_list <- list()
@@ -311,11 +311,36 @@ create_big_table <- function(spread_pnl_table,spread_table, save = F){
 #воспроизвести функции####
 bs_table <- create_bs_table(save = T, beginning_year = 2015)
 pnl_table <- create_pnl_table(save = T, beginning_year = 2015)
+normative_supports_table <- create_normative_supports_table(save = T)
+normatives_table <- create_normatives_table(save = T)
 
-big_table <- create_big_table(pnl_table, bs_table, save = T, beginning_year = 2015)
-create_normative_supports_table(save = T)
-create_normatives_table(save = T)
+big_table <- create_big_table(pnl_table, bs_table, save = T)
+big_table[, 1:3]
+big_table_ns <- merge(normative_supports_table, big_table, by = c("REGN", "Year", "Month"), all.y = T)
+big_table_ns_n <- merge(normatives_table, big_table_ns, by = c("REGN", "Year", "Month"), all.y = T)
+#write.csv(big_table_ns_n, "BanksDataNotAggregated.xlsx", fileEncoding = "UTF-8")
 
+big_table_ns_n <- fread('BanksDataNotAggregated.xlsx', encoding = "UTF-8")
+Defaults <- read.xlsx("BankDefaults.xlsx")
+
+Defaults <- as.data.table(Defaults)
+Defaults[, "DefaultMonth" := as.numeric(str_extract(str_extract(DefaultDate, "\\.\\d+"), "\\d+"))]
+Defaults[, "DefaultYear" := as.numeric(str_extract(str_extract(DefaultDate, "\\.\\d+$"), "\\d+"))]
+Defaults[, "regnum" := str_remove(regnum, "-[А-Я]")]
+Defaults[, "regnum" := str_remove(regnum, "-[A-Z]")]
+Defaults[, "regnum" := str_remove(regnum, "-[а-я]")]
+Defaults[, "regnum" := str_remove(regnum, "-[a-z]")]
+Defaults[, "regnum" := as.integer(regnum)]
+Defaults[DefaultType == "отозв."]
+big_table_ns_n_defaults <- merge(big_table_ns_n, Defaults, all.x = T, by.x = c("REGN"), by.y = c("regnum"))
+big_table_ns_n_defaults[, "AlreadyDefaulted" := ifelse( (is.na(DefaultMonth)) | (!is.na(DefaultMonth)) & ((DefaultYear > Year) | ((DefaultYear <= Year) & (DefaultMonth > Month))), 0, 1)]
+big_table_ns_n_defaults[, "WillDefault" := ifelse(1 %in% AlreadyDefaulted, 1, 0), by = "REGN"]
+big_table_ns_n_defaults[, "WillDefault" := ifelse(DefaultType == "ликв.", 0, DefaultType)]
+big_table_ns_n_defaults[, "AlreadyDefaulted" := ifelse(DefaultType == "ликв.", 0, DefaultType)]
+big_table_ns_n_defaults[, "VoluntaryWithdrawal" := ifelse(DefaultType == "ликв.", 0, 1)]
+big_table_ns_n_defaults[, "VoluntaryWithdrawal" := ifelse(is.na(DefaultType), 0, DefaultType)]
+
+write.csv(big_table_ns_n_defaults, "BanksDataNotAggregatedWithDefaults.csv")
 #аггрегирование столбцов####
 #Если есть желание создать новые переменные с некоторыми (почти всеми) аггрегированными показателями (по списку на https://kuap.ru/methodics/income/), то вам в этот раздел
 #Нужно создать обобщенную таблицу, воспользовавшись кодом выше (возможно, код сработает и с отдельными таблицами, но это не точно)
@@ -635,7 +660,7 @@ Taxes_minus_pnlold <- c(28101,28102)
 
 Retained_earnings_pnlold <- c(32001,32002,33001,33002)
 
-#некоторые вспомогательные функции
+#?????????????????? ?????????????????????????????? ??????????????
 pnl_rename <- function(name){
   return(as.character(paste(name, "pnl", sep = "")))
 }

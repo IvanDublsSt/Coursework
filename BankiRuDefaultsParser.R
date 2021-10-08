@@ -2,7 +2,7 @@ library(data.table)
 library(xml2)
 library(stringr)
 library(xlsx)
-setwd("C:/Users/Fride/OneDrive/Документы/GitHub/Coursework")
+setwd("C:/Personal/VariousData/CBRData")
 
 GetNumberOfPages <- function(URL){
   OnePageHTML <- read_html("https://www.banki.ru/banks/memory/?PAGEN_1=1")
@@ -51,9 +51,9 @@ AllPagesProcessing <- function(SavingRequired = F, SavingPath = NULL){
   AllPagesItems[BankDefaultIndex == BankLocalization, "BankLocalization" := "Unknown"]
   
   if (SavingRequired == T){
-    write.xlsx(AllPagesItems, SavingPath)
+    write.csv(AllPagesItems, SavingPath, fileEncoding = "UTF-8")
   }
   return(AllPagesItems)
 }
 
-AllPages <- AllPagesProcessing(SavingRequired = T, SavingPath = "Data/BankDefaults.xlsx")
+AllPages <- AllPagesProcessing(SavingRequired = T, SavingPath = "Data/BankDefaults.csv")
